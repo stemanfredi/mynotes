@@ -11,6 +11,7 @@ export interface SidebarOptions {
   listEl: HTMLElement;
   onOpen: (id: string) => void;
   onRename: (from: string, to: string) => void;
+  onDelete: (id: string) => void;
 }
 
 // Single-click acts (open/toggle); double-click renames. The native dblclick
@@ -19,7 +20,7 @@ export interface SidebarOptions {
 // click within the window.
 const DBLCLICK_MS = 220;
 
-export function createSidebar({ listEl, onOpen, onRename }: SidebarOptions) {
+export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOptions) {
   const expanded = new Set<string>(); // folder paths the user has opened
   let notes: NoteMeta[] = [];
   let currentId: string | null = null;
@@ -65,9 +66,19 @@ export function createSidebar({ listEl, onOpen, onRename }: SidebarOptions) {
       }
 
       const name = el("span", { className: "name", textContent: child.name });
+
+      // Delete button, hover-revealed on the right. Confirms first; for folders
+      // it warns that contents go too.
+      const del = el("span", { className: "row-del", textContent: "×", title: "Delete" });
+      del.onclick = (e) => {
+        e.stopPropagation();
+        const what = isFolder ? `folder “${child.name}” and its contents` : `“${child.name}”`;
+        if (confirm(`Delete ${what}?`)) onDelete(child.path);
+      };
+
       const li = el("li", {
         className: isFolder ? `folder${isOpen ? " open" : ""}` : `note${child.note!.id === currentId ? " active" : ""}`,
-      }, chev, name);
+      }, chev, name, del);
       li.style.paddingLeft = `${depth * 0.85 + 0.3}rem`;
 
       const single = isFolder ? () => toggle(child.path) : () => onOpen(child.note!.id);

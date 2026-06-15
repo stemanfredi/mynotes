@@ -21,7 +21,7 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 const setStatus = (s: string) => { statusEl.textContent = s; };
 
 const editor = createEditor($("#editor"), scheduleSave);
-const sidebar = createSidebar({ listEl: $("#note-list"), onOpen: openNote, onRename: commitRename });
+const sidebar = createSidebar({ listEl: $("#note-list"), onOpen: openNote, onRename: commitRename, onDelete: deleteItem });
 const syncSidebar = () => sidebar.update(allNotes, currentId, searchEl.value);
 
 async function refreshList() {
@@ -77,6 +77,22 @@ async function commitRename(from: string, to: string) {
   setStatus("renamed");
   await refreshList();
   if (currentId) showBacklinks(currentId);
+}
+
+// Delete a note or folder. If the open note went away (directly or inside a
+// deleted folder), fall back to another note or an empty editor.
+async function deleteItem(id: string) {
+  const hitCurrent = currentId === id || currentId?.startsWith(id + "/");
+  if (!(await api.deleteItem(id))) { setStatus("delete failed"); return; }
+  setStatus("deleted");
+  if (hitCurrent) currentId = null;
+  await refreshList();
+  if (!hitCurrent) return;
+  const next = allNotes[0]?.id;
+  if (next) { openNote(next); return; }
+  titleEl.value = "";
+  editor.setDoc("");
+  backlinksEl.replaceChildren();
 }
 
 // --- top bar, search, daily note ------------------------------------------

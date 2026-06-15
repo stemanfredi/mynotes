@@ -2,7 +2,7 @@
 // are the only source of truth. Everything here is either a thin file op or a
 // derived, in-memory, throwaway index that can be rebuilt by re-scanning.
 
-import { readdir, readFile, writeFile, mkdir, rename, rmdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, rename, rmdir, rm } from "node:fs/promises";
 import { watch } from "node:fs";
 import { join, dirname } from "node:path";
 import { extractLinkTargets, parseWikiLinks } from "../shared/links.ts";
@@ -199,6 +199,23 @@ export async function renameFolder(from: string, to: string): Promise<RenameResu
   }
   for (const id of affected) await renameNote(id, to + id.slice(from.length));
   return { ok: true, etag: "" };
+}
+
+// Delete a note or a whole folder (with its contents). Returns false if the id
+// matches neither. Links pointing at deleted notes are left as-is (they simply
+// become unresolved, recreated on next click) — same as Obsidian.
+export async function deleteItem(id: string): Promise<boolean> {
+  if (await readNote(id)) {
+    await rm(idToPath(id));
+    deindex(id);
+    await pruneEmptyDirs(dirname(idToPath(id)));
+    return true;
+  }
+  const affected = [...titles.keys()].filter((k) => k.startsWith(id + "/"));
+  if (!affected.length) return false;
+  for (const k of affected) deindex(k);
+  await rm(idToPath(id).replace(/\.md$/, ""), { recursive: true, force: true });
+  return true;
 }
 
 export function backlinks(id: string): NoteMeta[] {

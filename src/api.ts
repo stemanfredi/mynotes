@@ -40,6 +40,13 @@ export async function getBacklinks(id: string): Promise<NoteMeta[]> {
   return (await fetch(`/api/backlinks/${encodeURIComponent(id)}`)).json();
 }
 
+// Delete a note or a folder (with its contents). Returns whether it existed.
+export async function deleteItem(id: string): Promise<boolean> {
+  const res = await fetch(`/api/note/${encodeURIComponent(id)}`, { method: "DELETE" });
+  etags.delete(id);
+  return res.ok;
+}
+
 export type RenameResult = { ok: true } | { ok: false; reason: string };
 
 export async function renameNote(from: string, to: string): Promise<RenameResult> {

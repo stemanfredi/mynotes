@@ -42,6 +42,10 @@ aside li.muted:hover { background: none; }
 #note-list .folder.open > .chevron { transform: rotate(90deg); }
 #note-list .name { flex: 1; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+#note-list .row-del { flex: 0 0 auto; width: 1.2em; text-align: center; cursor: pointer;
+  color: var(--muted); opacity: 0; transition: opacity .1s, color .1s; }
+#note-list li:hover .row-del { opacity: 1; }
+#note-list .row-del:hover { color: #e5484d; }
 
 /* inline rename (double-click a row) */
 #note-list .rename-input { width: 100%; box-sizing: border-box; font: inherit;

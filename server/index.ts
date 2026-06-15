@@ -1,6 +1,6 @@
 // The entire backend: a folder of .md files + a derived link index, exposed over
 // a handful of HTTP endpoints. No database, no framework. Run: bun server/index.ts
-import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, backlinks } from "./store.ts";
+import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, deleteItem, backlinks } from "./store.ts";
 
 const PORT = Number(process.env.PORT ?? 8911);
 
@@ -49,6 +49,10 @@ Bun.serve({
         const res = await writeNote(id, body, req.headers.get("if-match") ?? undefined);
         if (!res.ok) return json({ conflict: true, etag: res.etag, conflictId: res.conflictId }, { status: 409 });
         return json({ etag: res.etag }, { headers: { etag: res.etag } });
+      }
+      // DELETE removes a note or a folder (with its contents).
+      if (req.method === "DELETE") {
+        return (await deleteItem(id)) ? json({ ok: true }) : new Response("not found", { status: 404 });
       }
     }
 
