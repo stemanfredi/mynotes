@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mynotes</title>
+  </head>
+  <body>
+    <aside class="left">
+      <div class="searchbar">
+        <input id="search" type="search" placeholder="Search or create…" autocomplete="off" />
+        <button id="new-note" title="New daily note">+</button>
+      </div>
+      <ul id="note-list"></ul>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <input id="note-title" title="Click to rename" />
+        <span id="status"></span>
+      </div>
+      <div id="editor"></div>
+    </main>
+
+    <aside class="right">
+      <h2>Backlinks</h2>
+      <ul id="backlinks"></ul>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

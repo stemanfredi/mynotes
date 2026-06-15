@@ -1,0 +1,29 @@
+{
+  "name": "mynotes",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"bun --watch server/index.ts\" \"vite\"",
+    "dev:server": "bun --watch server/index.ts",
+    "dev:client": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "bun server/index.ts"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/language": "^6.11.3",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.6",
+    "markdown-it": "^14.1.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "bun-types": "^1.3.14",
+    "concurrently": "^9.2.0",
+    "typescript": "^5.9.2",
+    "vite": "^6.3.5"
+  }
+}
