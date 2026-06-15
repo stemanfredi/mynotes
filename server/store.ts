@@ -36,17 +36,25 @@ export function etagOf(content: string): string {
 
 // --- index ----------------------------------------------------------------
 
-function reindex(id: string, content: string) {
-  // drop this note's old outgoing edges from the backlink map
+// Remove this note's outgoing edges from the backlink map.
+function clearOutgoing(id: string) {
   for (const t of forward.get(id) ?? []) back.get(t)?.delete(id);
+}
+
+function reindex(id: string, content: string) {
+  clearOutgoing(id);
   const targets = new Set(extractLinkTargets(content));
   forward.set(id, targets);
-  for (const t of targets) (back.get(t) ?? back.set(t, new Set()).get(t)!).add(id);
+  for (const target of targets) {
+    let sources = back.get(target);
+    if (!sources) back.set(target, sources = new Set());
+    sources.add(id);
+  }
   titles.set(id, titleOf(id));
 }
 
 function deindex(id: string) {
-  for (const t of forward.get(id) ?? []) back.get(t)?.delete(id);
+  clearOutgoing(id);
   forward.delete(id);
   back.delete(id);
   titles.delete(id);
@@ -197,19 +205,4 @@ export function backlinks(id: string): NoteMeta[] {
   return [...(back.get(id) ?? [])]
     .map((src) => ({ id: src, title: titles.get(src) ?? src }))
     .sort((a, b) => a.title.localeCompare(b.title));
-}
-
-export async function search(q: string): Promise<Array<NoteMeta & { excerpt: string }>> {
-  const needle = q.toLowerCase();
-  const hits: Array<NoteMeta & { excerpt: string }> = [];
-  for (const { id, title } of listNotes()) {
-    const note = await readNote(id);
-    if (!note) continue;
-    const i = note.content.toLowerCase().indexOf(needle);
-    if (title.toLowerCase().includes(needle) || i !== -1) {
-      const at = Math.max(0, i - 30);
-      hits.push({ id, title, excerpt: i === -1 ? "" : note.content.slice(at, at + 80).replace(/\n/g, " ") });
-    }
-  }
-  return hits;
 }

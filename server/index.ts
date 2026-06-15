@@ -1,6 +1,6 @@
 // The entire backend: a folder of .md files + a derived link index, exposed over
-// five HTTP endpoints. No database, no framework. Run with: bun server/index.ts
-import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, backlinks, search } from "./store.ts";
+// a handful of HTTP endpoints. No database, no framework. Run: bun server/index.ts
+import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, backlinks } from "./store.ts";
 
 const PORT = Number(process.env.PORT ?? 8911);
 
@@ -19,10 +19,6 @@ Bun.serve({
 
     // GET /api/notes -> [{id,title}]
     if (pathname === "/api/notes" && req.method === "GET") return json(listNotes());
-
-    // GET /api/search?q=...
-    if (pathname === "/api/search" && req.method === "GET")
-      return json(await search(url.searchParams.get("q") ?? ""));
 
     // POST /api/rename  {from, to} -> moves the file(s) + rewrites [[links]].
     // If `from` is an existing note it's a note rename; otherwise a folder rename.

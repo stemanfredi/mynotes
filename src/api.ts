@@ -1,4 +1,4 @@
-// Thin fetch wrapper over the server's five endpoints. Tracks the per-note ETag
+// Thin fetch wrapper over the server's HTTP endpoints. Tracks the per-note ETag
 // so saves can use If-Match for last-write-wins conflict detection.
 
 export interface NoteMeta { id: string; title: string; }
