@@ -22,6 +22,9 @@ body { display: grid; grid-template-columns: 230px 1fr 230px; height: 100vh;
 aside { background: var(--panel); border-right: 1px solid var(--border);
   overflow-y: auto; padding: .75rem; }
 aside.right { border-right: none; border-left: 1px solid var(--border); }
+/* Left bar: pin the search/+ row, scroll only the note list below it. */
+aside.left { display: flex; flex-direction: column; overflow: hidden; }
+aside.left #note-list { flex: 1; min-height: 0; overflow-y: auto; }
 aside h2 { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em;
   color: var(--muted); margin: .25rem .25rem 1rem; }
 aside ul { list-style: none; margin: 0; padding: 0; }
@@ -48,7 +51,6 @@ aside li.muted:hover { background: none; }
 #note-list .row-del:hover { color: #e5484d; }
 
 /* drag & drop: highlight a folder when a row hovers over it */
-#note-list { min-height: 100%; }
 #note-list .name { -webkit-user-drag: element; }
 #note-list .folder.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
 
@@ -57,7 +59,7 @@ aside li.muted:hover { background: none; }
   color: var(--fg); background: var(--bg); border: 1px solid var(--accent);
   border-radius: 4px; padding: .1rem .3rem; outline: none; }
 
-.searchbar { display: flex; gap: .4rem; margin-bottom: .75rem; }
+.searchbar { display: flex; gap: .4rem; margin-bottom: .75rem; flex: 0 0 auto; }
 #search { flex: 1; min-width: 0; padding: .4rem .55rem; font-size: .85rem;
   background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; }
 #search:focus { outline: none; border-color: var(--accent); }
