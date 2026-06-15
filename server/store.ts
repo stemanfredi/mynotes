@@ -2,7 +2,7 @@
 // are the only source of truth. Everything here is either a thin file op or a
 // derived, in-memory, throwaway index that can be rebuilt by re-scanning.
 
-import { readdir, readFile, writeFile, mkdir, rename, rmdir, rm } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, rename, rmdir, rm, stat } from "node:fs/promises";
 import { watch } from "node:fs";
 import { join, dirname } from "node:path";
 import { extractLinkTargets, parseWikiLinks } from "../shared/links.ts";
@@ -92,14 +92,25 @@ export function watchNotes(onChange?: (id: string) => void) {
   watch(NOTES_DIR, { recursive: true }, async (_event, filename) => {
     if (!filename) return;
     const rel = filename.toString().replace(/\\/g, "/");
-    if (!rel.endsWith(".md")) return;
-    const id = rel.replace(/\.md$/, "");
-    try {
-      reindex(id, await readFile(idToPath(id), "utf8")); // created or modified
-    } catch {
-      deindex(id); // deleted or renamed away
+
+    if (rel.endsWith(".md")) {
+      const id = rel.replace(/\.md$/, "");
+      try {
+        reindex(id, await readFile(idToPath(id), "utf8")); // created or modified
+      } catch {
+        deindex(id); // deleted or renamed away
+      }
+      onChange?.(id);
+      return;
     }
-    onChange?.(id);
+
+    // A directory event. Only act when the path is gone — that means a folder was
+    // removed (e.g. `rm -rf folder/`, which fs.watch reports at the directory
+    // level, not per-file) — and drop every note beneath it.
+    try { await stat(join(NOTES_DIR, rel)); return; } catch { /* gone */ }
+    for (const id of [...titles.keys()]) {
+      if (id === rel || id.startsWith(rel + "/")) { deindex(id); onChange?.(id); }
+    }
   });
 }
 
