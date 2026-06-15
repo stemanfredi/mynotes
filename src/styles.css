@@ -47,6 +47,11 @@ aside li.muted:hover { background: none; }
 #note-list li:hover .row-del { opacity: 1; }
 #note-list .row-del:hover { color: #e5484d; }
 
+/* drag & drop: highlight a folder when a row hovers over it */
+#note-list { min-height: 100%; }
+#note-list .name { -webkit-user-drag: element; }
+#note-list .folder.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+
 /* inline rename (double-click a row) */
 #note-list .rename-input { width: 100%; box-sizing: border-box; font: inherit;
   color: var(--fg); background: var(--bg); border: 1px solid var(--accent);

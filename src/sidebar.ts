@@ -25,6 +25,7 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
   let notes: NoteMeta[] = [];
   let currentId: string | null = null;
   let query = "";
+  let dragging: string | null = null; // path of the row being dragged
 
   function update(nextNotes: NoteMeta[], nextCurrentId: string | null, nextQuery: string) {
     notes = nextNotes;
@@ -65,7 +66,14 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
         chev.onclick = (e) => { e.stopPropagation(); toggle(child.path); };
       }
 
-      const name = el("span", { className: "name", textContent: child.name });
+      // Drag the row by its name to move it (into a folder, or out to the root).
+      const name = el("span", { className: "name", textContent: child.name, draggable: true });
+      name.ondragstart = (e) => {
+        dragging = child.path;
+        e.dataTransfer!.setData("text/plain", child.path);
+        e.dataTransfer!.effectAllowed = "move";
+      };
+      name.ondragend = () => { dragging = null; };
 
       // Delete button, hover-revealed on the right. Confirms first; for folders
       // it warns that contents go too.
@@ -80,6 +88,23 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
         className: isFolder ? `folder${isOpen ? " open" : ""}` : `note${child.note!.id === currentId ? " active" : ""}`,
       }, chev, name, del);
       li.style.paddingLeft = `${depth * 0.85 + 0.3}rem`;
+
+      // Folders are drop targets: dropping a row here moves it inside.
+      if (isFolder) {
+        li.ondragover = (e) => {
+          if (!canDrop(dragging, child.path)) return; // not preventing default => no drop
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = "move";
+          li.classList.add("drop-target");
+        };
+        li.ondragleave = () => li.classList.remove("drop-target");
+        li.ondrop = (e) => {
+          e.preventDefault();
+          e.stopPropagation(); // don't also trigger the root drop on listEl
+          li.classList.remove("drop-target");
+          moveInto(e.dataTransfer!.getData("text/plain"), child.path);
+        };
+      }
 
       const single = isFolder ? () => toggle(child.path) : () => onOpen(child.note!.id);
       wireRow(name, single, () => startRename(li, child));
@@ -129,6 +154,31 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
       }
     }
   }
+
+  // Can `from` be dropped into folder `targetFolder` ("" = root)? No-op moves and
+  // dropping a folder into itself or a descendant are rejected.
+  function canDrop(from: string | null, targetFolder: string): boolean {
+    if (!from) return false;
+    if (targetFolder === from || targetFolder.startsWith(from + "/")) return false;
+    const leaf = from.split("/").pop()!;
+    return (targetFolder ? `${targetFolder}/${leaf}` : leaf) !== from;
+  }
+
+  // Move = rename to a new path; the server moves the file(s) and rewrites links.
+  function moveInto(from: string, targetFolder: string) {
+    if (!canDrop(from, targetFolder)) return;
+    const leaf = from.split("/").pop()!;
+    if (targetFolder) remapExpanded(from, `${targetFolder}/${leaf}`);
+    onRename(from, targetFolder ? `${targetFolder}/${leaf}` : leaf);
+  }
+
+  // The empty list area is a drop target for moving a row out to the root.
+  listEl.ondragover = (e) => { if (e.target === listEl && dragging) e.preventDefault(); };
+  listEl.ondrop = (e) => {
+    if (e.target !== listEl) return;
+    e.preventDefault();
+    moveInto(e.dataTransfer!.getData("text/plain"), "");
+  };
 
   return { update };
 }
