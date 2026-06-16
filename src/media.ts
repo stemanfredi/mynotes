@@ -5,7 +5,7 @@ export const isImage = (name: string) => /\.(png|jpe?g|gif|svg|webp|avif|bmp)$/i
 
 // Absolute/remote/data URLs are used as-is; everything else is a vault-relative
 // path served by the server's /api/file route.
-export const fileSrc = (path: string) =>
+const fileSrc = (path: string) =>
   /^(https?:|data:)/i.test(path) ? path : "/api/file/" + path.split("/").map(encodeURIComponent).join("/");
 
 export class ImageWidget extends WidgetType {

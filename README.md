@@ -6,7 +6,7 @@ on the server, a web editor in front of it. No database, no CRDT, no framework.
 ## Architecture
 
 ```
-Browser (Vite-built vanilla TS PWA)            Server (Bun, single script)
+Browser (Vite-built vanilla TS app)            Server (Bun, single script)
 ┌──────────────────────────────┐   fetch()    ┌────────────────────────────────┐
 │ CodeMirror 6 editor          │ ───────────▶ │ GET  /api/notes                │
 │  └ live-preview decorations  │              │ GET  /api/note/:id   (ETag)    │
@@ -88,4 +88,4 @@ bun run serve        # Bun API; put dist/ behind any static host or the server
 - [ ] Offline: service worker + IndexedDB dirty-queue
 - [ ] Graph view over the link index
 - [ ] Full-text (content) search
-```
+
