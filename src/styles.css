@@ -7,28 +7,45 @@
   --panel:  light-dark(#f6f7f9, #222327);
   --border: light-dark(#e2e4e8, #34363b);
   --fg:     light-dark(#1f2328, #e6e6e6);
-  --muted:  light-dark(#6e7681, #888888);
+  --muted:  light-dark(#5b626c, #9aa0a8); /* AA: ≥4.5:1 on both --bg and --panel */
   --accent: light-dark(#2f6fe0, #7aa2f7);
   --hover:  light-dark(#eceef1, #2c2e33);
   --active: light-dark(#e7edfb, #2f3340);
   --embed:  light-dark(#eef1f6, #2a2d36);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --header-h: 44px; /* shared height of every column's header band */
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { display: grid; grid-template-columns: 230px 1fr 230px; height: 100vh;
-  background: var(--bg); color: var(--fg); font-family: var(--font); }
 
-aside { background: var(--panel); border-right: 1px solid var(--border);
-  overflow-y: auto; padding: .75rem; }
-aside.right { border-right: none; border-left: 1px solid var(--border); }
-/* Left bar: pin the search/+ row, scroll only the note list below it. */
-aside.left { display: flex; flex-direction: column; overflow: hidden; }
-aside.left #note-list { flex: 1; min-height: 0; overflow-y: auto; }
+/* Desktop shell: three columns, each a header band (.col-head) of --header-h
+   sitting over a scrolling body. The bands share one border line, so the tops of
+   all three panes line up instead of each starting at its own height. */
+body { display: grid; grid-template-columns: 230px 1fr 230px;
+  grid-template-areas: "side main links"; height: 100vh; overflow-x: hidden;
+  background: var(--bg); color: var(--fg); font-family: var(--font); }
+aside.left  { grid-area: side; }
+main        { grid-area: main; }
+aside.right { grid-area: links; }
+
+/* The header band, identical in every column → one continuous rule across the
+   top, on the same panel gray as the side columns. */
+.col-head { flex: 0 0 var(--header-h); height: var(--header-h); display: flex;
+  align-items: center; gap: .5rem; padding: 0 .6rem; background: var(--panel);
+  border-bottom: 1px solid var(--border); }
+
+aside { background: var(--panel); overflow: hidden;
+  display: flex; flex-direction: column; min-height: 0; }
+aside.left  { border-right: 1px solid var(--border); }
+aside.right { border-left: 1px solid var(--border); }
+/* The scrolling body of each side panel. */
+/* No padding at all: rows run full-bleed (highlights reach the panel edges) and
+   the first row sits flush under the header divider — a tight file-explorer feel. */
+#note-list, #backlinks { flex: 1; min-height: 0; overflow-y: auto; padding: 0; }
 aside h2 { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--muted); margin: .25rem .25rem 1rem; }
+  color: var(--muted); margin: 0; }
 aside ul { list-style: none; margin: 0; padding: 0; }
-aside li { padding: .35rem .5rem; border-radius: 6px; cursor: pointer;
+aside li { padding: .35rem .6rem; cursor: pointer;
   font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 aside li:hover { background: var(--hover); }
 aside li.active { background: var(--active); color: var(--accent); }
@@ -45,10 +62,14 @@ aside li.muted:hover { background: none; }
 #note-list .folder.open > .chevron { transform: rotate(90deg); }
 #note-list .name { flex: 1; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-#note-list .row-del { flex: 0 0 auto; width: 1.2em; text-align: center; cursor: pointer;
+#note-list .row-del { flex: 0 0 auto; width: 1.4em; text-align: center; cursor: pointer;
   color: var(--muted); opacity: 0; transition: opacity .1s, color .1s; }
-#note-list li:hover .row-del { opacity: 1; }
+/* Reveal the × on hover (mouse) or when the row has keyboard focus. */
+#note-list li:hover .row-del,
+#note-list li:focus-within .row-del { opacity: 1; }
 #note-list .row-del:hover { color: #e5484d; }
+/* Touch devices have no hover — keep the × visible so it's tappable. */
+@media (pointer: coarse) { #note-list .row-del { opacity: 1; } }
 
 /* drag & drop: highlight a folder when a row hovers over it */
 #note-list .name { -webkit-user-drag: element; }
@@ -59,17 +80,26 @@ aside li.muted:hover { background: none; }
   color: var(--fg); background: var(--bg); border: 1px solid var(--accent);
   border-radius: 4px; padding: .1rem .3rem; outline: none; }
 
-.searchbar { display: flex; gap: .4rem; margin-bottom: .75rem; flex: 0 0 auto; }
+.searchbar { gap: .4rem; }
 #search { flex: 1; min-width: 0; padding: .4rem .55rem; font-size: .85rem;
   background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; }
 #search:focus { outline: none; border-color: var(--accent); }
-#new-note { flex: 0 0 auto; width: 2rem; cursor: pointer; font-size: 1.1rem; line-height: 1;
+#new-note { flex: 0 0 auto; width: 2.25rem; height: 2.25rem; cursor: pointer; font-size: 1.1rem; line-height: 1;
   background: var(--hover); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; }
 #new-note:hover { border-color: var(--accent); color: var(--accent); }
 
 main { display: flex; flex-direction: column; min-width: 0; }
-.topbar { display: flex; align-items: center; gap: 1rem; padding: .5rem .75rem;
-  border-bottom: 1px solid var(--border); }
+/* Drop the col-head side padding so .topbar-inner's 2rem matches the editor's
+   fixed left margin — putting the note title's left edge on the editor text. */
+.topbar { padding: 0; }
+.topbar-inner { flex: 1; min-width: 0;
+  padding: 0 2rem; display: flex; align-items: center; gap: .75rem; }
+/* The drawer toggle is hidden until the layout collapses to a single column. */
+#menu-toggle { display: none; flex: 0 0 auto; width: 2.25rem; height: 2.25rem;
+  align-items: center; justify-content: center; font-size: 1.15rem; line-height: 1;
+  cursor: pointer; background: none; color: var(--fg);
+  border: 1px solid transparent; border-radius: 6px; }
+#menu-toggle:hover { border-color: var(--border); }
 #note-title { field-sizing: content; min-width: 4ch; max-width: 100%;
   background: none; color: var(--fg); font-size: 1rem; font-weight: 600; outline: none;
   border: 1px solid transparent; border-radius: 6px; padding: .2rem .4rem; cursor: text; }
@@ -79,9 +109,19 @@ main { display: flex; flex-direction: column; min-width: 0; }
 
 #editor { flex: 1; overflow: auto; }
 
+#nav-backdrop { display: none; }
+
+/* A clear keyboard focus ring for anything that isn't an input with its own
+   focus style (the editor opts out separately below). */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
 /* CodeMirror inherits the theme variables so it matches in both schemes. */
 .cm-editor { height: 100%; font-size: 15px; background: var(--bg); color: var(--fg); }
-.cm-content { max-width: 760px; margin: 0 auto; padding: 1.5rem 1rem; caret-color: var(--fg); }
+/* `.cm-editor` prefix raises specificity above CodeMirror's own injected
+   `.cm-content { padding: 4px 0 }`, which would otherwise win and glue the text
+   to the divider. Left-aligned measure: text starts at a fixed 2rem margin (so
+   the top-bar title can sit on the same stable left edge), capped at 760px. */
+.cm-editor .cm-content { max-width: 760px; margin: 0; padding: 1.5rem 2rem; caret-color: var(--fg); }
 .cm-focused { outline: none !important; }
 .cm-cursor, .cm-dropCursor { border-left-color: var(--fg); }
 .cm-activeLine { background: color-mix(in srgb, var(--accent) 8%, transparent); }
@@ -123,3 +163,32 @@ main { display: flex; flex-direction: column; min-width: 0; }
 /* embedded images */
 .cm-img { max-width: 100%; max-height: 420px; border-radius: 6px;
   vertical-align: middle; }
+
+/* ─────────────────────────── Responsive ───────────────────────────
+   Kept at the end so these overrides win over the base rules above (media
+   queries add no specificity). ≤1024 (tablet): backlinks drops out of the right
+   column and stacks under the editor; the page scrolls and the editor grows with
+   its content (uncapped) while the sidebar stays pinned. ≤640 (phone): single
+   column — the sidebar becomes a slide-in drawer behind the ☰ button; backlinks
+   sit at the very end of the page. */
+@media (max-width: 1024px) {
+  body { grid-template-columns: 230px 1fr;
+    grid-template-areas: "side main" "side links";
+    height: auto; min-height: 100vh; }
+  aside.left { position: sticky; top: 0; height: 100vh; }
+  #editor { flex: none; overflow: visible; }
+  .cm-editor { height: auto; min-height: 60vh; }
+  aside.right { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
+  #backlinks { overflow: visible; }
+}
+
+@media (max-width: 640px) {
+  body { grid-template-columns: 1fr; grid-template-areas: "main" "links"; }
+  #menu-toggle { display: inline-flex; }
+  aside.left { position: fixed; top: 0; left: 0; z-index: 20;
+    width: 260px; max-width: 80vw; height: 100vh;
+    transform: translateX(-100%); transition: transform .18s ease; }
+  body.nav-open aside.left { transform: none; }
+  body.nav-open #nav-backdrop { display: block; position: fixed; inset: 0; z-index: 10;
+    background: rgba(0, 0, 0, .35); }
+}

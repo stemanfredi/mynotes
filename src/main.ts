@@ -13,6 +13,8 @@ const backlinksEl = $("#backlinks");
 const titleEl = $<HTMLInputElement>("#note-title");
 const statusEl = $("#status");
 const searchEl = $<HTMLInputElement>("#search");
+const menuToggleEl = $("#menu-toggle");
+const backdropEl = $("#nav-backdrop");
 
 let currentId: string | null = null;
 let allNotes: api.NoteMeta[] = [];
@@ -45,6 +47,7 @@ async function openNote(id: string) {
     }
   }
   currentId = id;
+  setNav(false); // close the mobile drawer once a note is chosen
   titleEl.value = id;
   editor.setDoc(content ?? "");
   setStatus(content === null ? "new note" : "saved");
@@ -138,6 +141,15 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 $("#new-note").onclick = () => createNote(today());
+
+// Mobile drawer: ☰ toggles the sidebar; the backdrop (and opening a note) close
+// it. No-ops on wide layouts, where the sidebar is always visible and ☰ is hidden.
+const setNav = (open: boolean) => {
+  document.body.classList.toggle("nav-open", open);
+  menuToggleEl.setAttribute("aria-expanded", String(open));
+};
+menuToggleEl.onclick = () => setNav(!document.body.classList.contains("nav-open"));
+backdropEl.onclick = () => setNav(false);
 
 // Click the title to rename the open note. Enter/blur commits, Esc cancels.
 titleEl.onkeydown = (e) => {

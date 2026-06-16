@@ -8,25 +8,30 @@
   </head>
   <body>
     <aside class="left">
-      <div class="searchbar">
-        <input id="search" type="search" placeholder="Search or create…" autocomplete="off" />
-        <button id="new-note" title="New daily note">+</button>
+      <div class="searchbar col-head">
+        <input id="search" type="search" placeholder="Search or create…" autocomplete="off" aria-label="Search notes or type a name to create one" />
+        <button id="new-note" title="New daily note" aria-label="New daily note">+</button>
       </div>
       <ul id="note-list"></ul>
     </aside>
 
     <main>
-      <div class="topbar">
-        <input id="note-title" title="Click to rename" />
-        <span id="status"></span>
+      <div class="topbar col-head">
+        <button id="menu-toggle" type="button" title="Show notes" aria-label="Show notes" aria-expanded="false" aria-controls="note-list">☰</button>
+        <div class="topbar-inner">
+          <input id="note-title" title="Click to rename" aria-label="Note title (click to rename)" />
+          <span id="status" role="status" aria-live="polite"></span>
+        </div>
       </div>
       <div id="editor"></div>
     </main>
 
     <aside class="right">
-      <h2>Backlinks</h2>
+      <div class="col-head"><h2>Backlinks</h2></div>
       <ul id="backlinks"></ul>
     </aside>
+
+    <div id="nav-backdrop"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
