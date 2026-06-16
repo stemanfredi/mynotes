@@ -64,8 +64,11 @@ Then open http://localhost:5180. Edit a note, watch it persist to
 with `PORT=...` and the vault location with `NOTES_DIR=...`.
 
 ```sh
-bun test             # store + link-parser unit tests (run against a temp vault)
+bun test             # unit + HTTP integration tests (run against a temp vault)
 ```
+
+CI (`.github/workflows/ci.yml`) runs typecheck + tests + build on every push to
+`main` and every PR — it activates automatically once the repo has a GitHub remote.
 
 ### Production
 
