@@ -4,7 +4,6 @@ dist/
 *.log
 .DS_Store
 
-# the vault is personal content, not part of the repo — ignore everything under
-# notes/ but keep the folder itself so a fresh clone has somewhere to write.
-notes/*
-!notes/.gitkeep
+# the vault is personal content, not part of the repo. The server creates notes/
+# on boot, so the empty dir doesn't need to be tracked.
+notes/
