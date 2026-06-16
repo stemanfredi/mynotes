@@ -28,16 +28,18 @@ the client (rendering) and the server (indexing), so they can never disagree.
 ## Project layout
 
 ```
-shared/links.ts   wiki-link parsing — shared by client and server
-server/store.ts   the vault: file ops + derived in-memory link index + watcher
-server/index.ts   HTTP routing over Bun.serve
-src/api.ts        typed fetch wrapper (tracks ETags for conflict detection)
-src/editor.ts     CodeMirror 6 setup
-src/wikilink.ts   [[wikilink]] live-preview decoration (CodeMirror)
-src/tree.ts       pure: flat note ids -> folder tree
-src/sidebar.ts    the note-tree component (render, expand/collapse, rename)
-src/dom.ts        $ / el DOM helpers
-src/main.ts       app orchestration: state, editor + sidebar wiring, top bar
+shared/links.ts        wiki-link parsing — shared by client and server
+server/store.ts        the vault: file ops + derived in-memory link index + watcher
+server/index.ts        HTTP routing over Bun.serve
+src/api.ts             typed fetch wrapper (tracks ETags for conflict detection)
+src/editor.ts          CodeMirror 6 setup
+src/preview.ts         live preview: Markdown + [[wikilinks]] + URLs, one pass
+src/code-languages.ts  lazy-loaded languages for fenced-code highlighting
+src/media.ts           image embed helpers (isImage, fileSrc, ImageWidget)
+src/tree.ts            pure: flat note ids -> folder tree
+src/sidebar.ts         the note-tree component (render, expand/collapse, rename, DnD)
+src/dom.ts             $ / el DOM helpers
+src/main.ts            app orchestration: state, editor + sidebar wiring, top bar
 ```
 
 ## Design decisions

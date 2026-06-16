@@ -92,7 +92,7 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
       // Folders are drop targets: dropping a row here moves it inside.
       if (isFolder) {
         li.ondragover = (e) => {
-          if (!canDrop(dragging, child.path)) return; // not preventing default => no drop
+          if (!moveTarget(dragging, child.path)) return; // not preventing default => no drop
           e.preventDefault();
           e.dataTransfer!.dropEffect = "move";
           li.classList.add("drop-target");
@@ -155,21 +155,21 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
     }
   }
 
-  // Can `from` be dropped into folder `targetFolder` ("" = root)? No-op moves and
-  // dropping a folder into itself or a descendant are rejected.
-  function canDrop(from: string | null, targetFolder: string): boolean {
-    if (!from) return false;
-    if (targetFolder === from || targetFolder.startsWith(from + "/")) return false;
+  // The new id if `from` were dropped into `targetFolder` ("" = root), or null if
+  // the move is invalid (a no-op, or a folder into itself/a descendant).
+  function moveTarget(from: string | null, targetFolder: string): string | null {
+    if (!from || targetFolder === from || targetFolder.startsWith(from + "/")) return null;
     const leaf = from.split("/").pop()!;
-    return (targetFolder ? `${targetFolder}/${leaf}` : leaf) !== from;
+    const to = targetFolder ? `${targetFolder}/${leaf}` : leaf;
+    return to === from ? null : to;
   }
 
   // Move = rename to a new path; the server moves the file(s) and rewrites links.
   function moveInto(from: string, targetFolder: string) {
-    if (!canDrop(from, targetFolder)) return;
-    const leaf = from.split("/").pop()!;
-    if (targetFolder) remapExpanded(from, `${targetFolder}/${leaf}`);
-    onRename(from, targetFolder ? `${targetFolder}/${leaf}` : leaf);
+    const to = moveTarget(from, targetFolder);
+    if (!to) return;
+    if (targetFolder) remapExpanded(from, to);
+    onRename(from, to);
   }
 
   // The empty list area is a drop target for moving a row out to the root.
@@ -183,9 +183,9 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
   return { update };
 }
 
-function wireRow(el: HTMLElement, onSingle: () => void, onDouble: () => void) {
+function wireRow(row: HTMLElement, onSingle: () => void, onDouble: () => void) {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  el.onclick = () => {
+  row.onclick = () => {
     if (timer) { clearTimeout(timer); timer = undefined; onDouble(); return; }
     timer = setTimeout(() => { timer = undefined; onSingle(); }, DBLCLICK_MS);
   };
