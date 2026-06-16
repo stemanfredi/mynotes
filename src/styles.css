@@ -100,11 +100,11 @@ aside li.muted:hover { background: none; }
 #new-note:hover { border-color: var(--accent); color: var(--accent); }
 
 main { display: flex; flex-direction: column; min-width: 0; }
-/* Drop the col-head side padding so .topbar-inner's 2rem matches the editor's
-   fixed left margin — putting the note title's left edge on the editor text. */
+/* Drop the col-head side padding so .topbar-inner's 1.5rem matches the editor's
+   fixed inset — putting the note title's left edge on the editor text. */
 .topbar { padding: 0; }
 .topbar-inner { flex: 1; min-width: 0;
-  padding: 0 2rem; display: flex; align-items: center; gap: .75rem; }
+  padding: 0 1.5rem; display: flex; align-items: center; gap: .75rem; }
 /* The drawer toggle is hidden until the layout collapses to a single column. */
 #menu-toggle { display: none; flex: 0 0 auto; width: 2.25rem; height: 2.25rem;
   align-items: center; justify-content: center; font-size: 1.15rem; line-height: 1;
@@ -130,9 +130,9 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-editor { height: 100%; font-size: 15px; background: var(--bg); color: var(--fg); }
 /* `.cm-editor` prefix raises specificity above CodeMirror's own injected
    `.cm-content { padding: 4px 0 }`, which would otherwise win and glue the text
-   to the divider. Left-aligned measure: text starts at a fixed 2rem margin (so
-   the top-bar title can sit on the same stable left edge), capped at 760px. */
-.cm-editor .cm-content { max-width: 760px; margin: 0; padding: 1.5rem 2rem; caret-color: var(--fg); }
+   to the divider. Left-aligned measure: an even 1.5rem inset on all four sides
+   (so the top-bar title can sit on the same stable left edge), capped at 760px. */
+.cm-editor .cm-content { max-width: 760px; margin: 0; padding: 1.5rem; caret-color: var(--fg); }
 .cm-focused { outline: none !important; }
 .cm-cursor, .cm-dropCursor { border-left-color: var(--fg); }
 .cm-activeLine { background: color-mix(in srgb, var(--accent) 8%, transparent); }
