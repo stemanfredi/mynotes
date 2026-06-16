@@ -1,8 +1,10 @@
+.claude/
 node_modules/
 dist/
 .playwright-mcp/
 *.log
 .DS_Store
+.nfs*
 
 # the vault is personal content, not part of the repo. The server creates notes/
 # on boot, so the empty dir doesn't need to be tracked.
