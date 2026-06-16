@@ -2,6 +2,7 @@
   "name": "mynotes",
   "private": true,
   "version": "0.1.0",
+  "description": "A deliberately minimal, Markdown-based note-taking web app.",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"bun --watch server/index.ts\" \"vite\"",

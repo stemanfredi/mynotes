@@ -68,6 +68,12 @@ src/main.ts            app orchestration: state, editor + sidebar wiring, top ba
 
 ## Run it
 
+**Requirements:** [Bun](https://bun.com) to run. Full-text content search shells
+out to [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) when it's on the
+server's `PATH` — it's optional, with a slower in-process scan as a fallback when
+`rg` is absent. Install it with `apt install ripgrep` (Debian/Ubuntu),
+`brew install ripgrep` (macOS), or your platform's equivalent.
+
 ```sh
 bun install
 bun run dev          # Bun API (:8911) + Vite client (:5180) together
