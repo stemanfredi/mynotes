@@ -7,7 +7,7 @@
 // grammar); this covers everything the parser does understand.
 
 import { syntaxTree } from "@codemirror/language";
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { Range } from "@codemirror/state";
 
 const HIDE = Decoration.replace({});
@@ -23,6 +23,18 @@ const CONTENT: Record<string, Decoration> = {
 // Marker tokens to hide when the cursor isn't on their line.
 const MARKERS = new Set(["EmphasisMark", "CodeMark", "StrikethroughMark", "HeaderMark"]);
 
+// Replaces a hidden opening fence line, showing the language as a corner label.
+class LangLabel extends WidgetType {
+  constructor(readonly lang: string) { super(); }
+  eq(other: LangLabel) { return other.lang === this.lang; }
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-pv-cb-lang";
+    span.textContent = this.lang;
+    return span;
+  }
+}
+
 function build(view: EditorView): DecorationSet {
   const { state } = view;
 
@@ -37,16 +49,35 @@ function build(view: EditorView): DecorationSet {
     syntaxTree(state).iterate({
       from, to,
       enter: (node) => {
-        // Fenced code: give the whole block a monospace code-box background. Skip
-        // its children (the ``` are CodeMark nodes too — don't let the inline
-        // marker logic hide them).
+        // Fenced code: a monospace code-box background on every line. When the
+        // cursor is OUTSIDE the block, hide the ``` fence lines and show the
+        // language as a corner label; inside, leave them raw so they're editable.
+        // Skip children (the ``` are CodeMark nodes — don't let the inline marker
+        // logic touch them).
         if (node.name === "FencedCode") {
           const first = state.doc.lineAt(node.from).number;
           const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
+          let cursorInside = false;
+          for (let l = first; l <= last; l++) if (active.has(l)) { cursorInside = true; break; }
+
           for (let n = first; n <= last; n++) {
             const line = state.doc.line(n);
             const edge = n === first ? " cm-pv-cb-open" : n === last ? " cm-pv-cb-close" : "";
             decos.push(Decoration.line({ class: "cm-pv-codeblock" + edge }).range(line.from));
+          }
+
+          if (!cursorInside) {
+            const marks = node.node.getChildren("CodeMark"); // opening (and closing) ```
+            if (marks.length) {
+              const openLine = state.doc.lineAt(marks[0].from);
+              const info = node.node.getChild("CodeInfo");
+              const lang = info ? state.doc.sliceString(info.from, info.to) : "";
+              decos.push(Decoration.replace({ widget: new LangLabel(lang) }).range(openLine.from, openLine.to));
+            }
+            if (marks.length > 1) {
+              const closeLine = state.doc.lineAt(marks[marks.length - 1].from);
+              if (closeLine.length) decos.push(Decoration.replace({}).range(closeLine.from, closeLine.to));
+            }
           }
           return false;
         }
