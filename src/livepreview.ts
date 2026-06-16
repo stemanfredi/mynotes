@@ -21,7 +21,7 @@ const CONTENT: Record<string, Decoration> = {
 };
 
 // Marker tokens to hide when the cursor isn't on their line.
-const MARKERS = new Set(["EmphasisMark", "CodeMark", "StrikethroughMark", "HeaderMark"]);
+const MARKERS = new Set(["EmphasisMark", "CodeMark", "StrikethroughMark", "HeaderMark", "QuoteMark"]);
 
 // Replaces a hidden opening fence line, showing the language as a corner label.
 class LangLabel extends WidgetType {
@@ -82,6 +82,17 @@ function build(view: EditorView): DecorationSet {
           return false;
         }
 
+        // Blockquote: a left bar + indent on every line. Children are still
+        // visited so the `>` markers get hidden (QuoteMark) and inline marks work.
+        if (node.name === "Blockquote") {
+          const first = state.doc.lineAt(node.from).number;
+          const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
+          for (let n = first; n <= last; n++) {
+            decos.push(Decoration.line({ class: "cm-pv-quote" }).range(state.doc.line(n).from));
+          }
+          return;
+        }
+
         const content = CONTENT[node.name];
         if (content) { decos.push(content.range(node.from, node.to)); return; }
 
@@ -93,8 +104,8 @@ function build(view: EditorView): DecorationSet {
 
         if (MARKERS.has(node.name) && !active.has(state.doc.lineAt(node.from).number)) {
           let end = node.to;
-          // Hide the space after "# " too, so the heading text starts at the margin.
-          if (node.name === "HeaderMark" && state.doc.sliceString(end, end + 1) === " ") end++;
+          // Hide the space after "# " / "> " too, so text starts at the margin.
+          if ((node.name === "HeaderMark" || node.name === "QuoteMark") && state.doc.sliceString(end, end + 1) === " ") end++;
           if (end > node.from) decos.push(HIDE.range(node.from, end));
         }
       },

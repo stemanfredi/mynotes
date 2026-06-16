@@ -113,3 +113,4 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-pv-cb-close { border-radius: 0 0 6px 6px; padding-bottom: .3em; }
 .cm-pv-cb-lang { float: right; font-size: .72em; letter-spacing: .04em;
   text-transform: uppercase; color: var(--muted); user-select: none; }
+.cm-pv-quote { border-left: 3px solid var(--border); padding-left: .8em; color: var(--muted); }
