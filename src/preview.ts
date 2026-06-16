@@ -181,6 +181,30 @@ function build(view: EditorView): DecorationSet {
   return Decoration.set(decos, true);
 }
 
+// Keyboard equivalent of clicking a link: follow the [[wikilink]] or bare URL the
+// cursor sits in. Bound to Mod-Enter in the editor (Tab is taken by indentation,
+// so links inside the editable doc need a key command rather than tab-focus).
+export function followLinkAtCursor(view: EditorView): boolean {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const col = state.selection.main.head - line.from;
+
+  for (const link of parseWikiLinks(line.text)) {
+    if (col >= link.start && col <= link.end) {
+      window.dispatchEvent(new CustomEvent(WIKILINK_NAV, { detail: { target: link.target } }));
+      return true;
+    }
+  }
+  for (const m of line.text.matchAll(URL_RE)) {
+    const start = m.index, end = start + m[0].length;
+    if (col >= start && col <= end) {
+      const href = m[0].replace(/[.,;:!?'"]+$/, "");
+      if (href) { window.open(href, "_blank", "noopener,noreferrer"); return true; }
+    }
+  }
+  return false;
+}
+
 export const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;

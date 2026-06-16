@@ -8,7 +8,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown } from "@codemirror/lang-markdown";
 import { Strikethrough } from "@lezer/markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { livePreview } from "./preview.ts";
+import { livePreview, followLinkAtCursor } from "./preview.ts";
 import { codeLanguages } from "./code-languages.ts";
 
 export interface Editor {
@@ -26,7 +26,10 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
       doc,
       extensions: [
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([
+          { key: "Mod-Enter", run: followLinkAtCursor }, // follow a link at the cursor
+          ...defaultKeymap, ...historyKeymap, indentWithTab,
+        ]),
         drawSelection(),
         highlightActiveLine(),
         markdown({ codeLanguages, extensions: [Strikethrough] }),

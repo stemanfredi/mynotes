@@ -2,6 +2,11 @@
 // state, and handles row interactions (click = open/toggle, double-click =
 // rename). It calls back to the app via onOpen / onRename; it does not know about
 // the editor, the server, or app state beyond what update() is given.
+//
+// Accessibility: the list is an ARIA `tree` with `treeitem` rows. Exactly one row
+// is in the tab order (roving tabindex); arrows move between rows, Right/Left
+// expand/collapse folders, Enter/Space open or toggle, F2 renames, Delete removes.
+// Mouse behaviour (click, double-click rename, drag-and-drop) is unchanged.
 
 import { el } from "./dom.ts";
 import { buildTree, ancestors, type TreeNode } from "./tree.ts";
@@ -26,6 +31,10 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
   let currentId: string | null = null;
   let query = "";
   let dragging: string | null = null; // path of the row being dragged
+  let focusPath: string | null = null; // row that holds the single tab stop
+
+  listEl.setAttribute("role", "tree");
+  listEl.setAttribute("aria-label", "Notes");
 
   function update(nextNotes: NoteMeta[], nextCurrentId: string | null, nextQuery: string) {
     notes = nextNotes;
@@ -35,6 +44,10 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
   }
 
   function render() {
+    // Only steal focus back into the tree on re-render if it was already here
+    // (e.g. mid keyboard-navigation) — never when the user is typing elsewhere.
+    const restore = listEl.contains(document.activeElement);
+
     const q = query.trim().toLowerCase();
     const shown = q ? notes.filter((n) => n.title.toLowerCase().includes(q)) : notes;
 
@@ -46,6 +59,19 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
 
     listEl.replaceChildren();
     renderNodes(buildTree(shown), 0, open);
+
+    // Roving tabindex: one row is tabbable — the one last focused if it survived,
+    // else the active note, else the first row.
+    const rows = rowEls();
+    const want = rows.find((r) => r.dataset.path === focusPath)
+      ?? rows.find((r) => r.getAttribute("aria-selected") === "true")
+      ?? rows[0];
+    if (want) {
+      setTabStop(want);
+      if (restore) want.focus();
+    } else {
+      focusPath = null;
+    }
   }
 
   function renderNodes(node: TreeNode, depth: number, open: Set<string>) {
@@ -59,8 +85,10 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
       const isOpen = isFolder && open.has(child.path);
 
       // Chevron in its own gutter with an IMMEDIATE click (no debounce) so
-      // toggling is reliable; notes get an empty gutter so names line up.
+      // toggling is reliable; notes get an empty gutter so names line up. The
+      // icon is decorative for AT — expansion is conveyed by aria-expanded.
       const chev = el("span", { className: isFolder ? "chevron" : "chevron spacer" });
+      chev.setAttribute("aria-hidden", "true");
       if (isFolder) {
         chev.textContent = ">";
         chev.onclick = (e) => { e.stopPropagation(); toggle(child.path); };
@@ -75,19 +103,28 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
       };
       name.ondragend = () => { dragging = null; };
 
-      // Delete button, hover-revealed on the right. Confirms first; for folders
-      // it warns that contents go too.
+      // Delete button, hover-revealed on the right. Decorative for AT (the row
+      // handles Delete); confirms first, and for folders warns contents go too.
       const del = el("span", { className: "row-del", textContent: "×", title: "Delete" });
-      del.onclick = (e) => {
-        e.stopPropagation();
-        const what = isFolder ? `folder “${child.name}” and its contents` : `“${child.name}”`;
-        if (confirm(`Delete ${what}?`)) onDelete(child.path);
-      };
+      del.setAttribute("aria-hidden", "true");
+      del.onclick = (e) => { e.stopPropagation(); requestDelete(li); };
 
       const li = el("li", {
         className: isFolder ? `folder${isOpen ? " open" : ""}` : `note${child.note!.id === currentId ? " active" : ""}`,
-      }, chev, name, del);
-      li.style.paddingLeft = `${depth * 0.85 + 0.3}rem`;
+      }, chev, name, del) as HTMLLIElement;
+      li.style.paddingLeft = `${depth * 0.85 + 0.6}rem`;
+
+      // ARIA tree wiring + the data the keyboard handler reads off the row.
+      li.setAttribute("role", "treeitem");
+      li.setAttribute("aria-level", String(depth + 1));
+      li.dataset.path = child.path;
+      li.dataset.name = child.name;
+      li.dataset.folder = String(isFolder);
+      if (isFolder) li.setAttribute("aria-expanded", String(isOpen));
+      if (!isFolder) {
+        li.dataset.id = child.note!.id;
+        if (child.note!.id === currentId) li.setAttribute("aria-selected", "true");
+      }
 
       // Folders are drop targets: dropping a row here moves it inside.
       if (isFolder) {
@@ -107,7 +144,7 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
       }
 
       const single = isFolder ? () => toggle(child.path) : () => onOpen(child.note!.id);
-      wireRow(name, single, () => startRename(li, child));
+      wireRow(name, single, () => startRename(li, child.path, child.name));
       listEl.append(li);
       if (isOpen) renderNodes(child, depth + 1, open);
     }
@@ -118,9 +155,8 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
     render();
   }
 
-  function startRename(li: HTMLLIElement, node: TreeNode) {
-    const from = node.path;
-    const input = el("input", { className: "rename-input", value: node.name });
+  function startRename(li: HTMLLIElement, from: string, currentName: string) {
+    const input = el("input", { className: "rename-input", value: currentName });
     li.replaceChildren(input);
     input.focus();
     input.select();
@@ -130,19 +166,29 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
       if (done) return;
       done = true;
       const name = input.value.trim();
-      if (!commit || !name || name === node.name) return render(); // nothing to do, restore
+      if (!commit || !name || name === currentName) return render(); // nothing to do, restore
       const slash = from.lastIndexOf("/");
       const to = slash === -1 ? name : from.slice(0, slash + 1) + name; // keep the parent path
       remapExpanded(from, to); // keep the renamed folder open
+      focusPath = to; // follow the row to its new name
       onRename(from, to);
     };
 
     input.onclick = (e) => e.stopPropagation();
     input.onkeydown = (e) => {
+      e.stopPropagation(); // don't let the tree handler see typing/arrows
       if (e.key === "Enter") { e.preventDefault(); finish(true); }
       else if (e.key === "Escape") { e.preventDefault(); finish(false); }
     };
     input.onblur = () => finish(true);
+  }
+
+  // Confirm + delete, off a row element (shared by the × button and the Delete key).
+  function requestDelete(li: HTMLLIElement) {
+    const isFolder = li.dataset.folder === "true";
+    const name = li.dataset.name ?? "";
+    const what = isFolder ? `folder “${name}” and its contents` : `“${name}”`;
+    if (confirm(`Delete ${what}?`)) onDelete(li.dataset.path!);
   }
 
   // When a folder is renamed, move its remembered expansion state to the new path.
@@ -171,6 +217,69 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
     if (targetFolder) remapExpanded(from, to);
     onRename(from, to);
   }
+
+  // --- keyboard: roving tabindex over the visible rows -----------------------
+
+  const rowEls = () => [...listEl.querySelectorAll<HTMLLIElement>('li[role="treeitem"]')];
+
+  // Make `li` the single tabbable row (the roving tab stop) and remember it.
+  function setTabStop(li: HTMLLIElement) {
+    for (const r of rowEls()) r.tabIndex = -1;
+    li.tabIndex = 0;
+    focusPath = li.dataset.path ?? null;
+  }
+
+  function focusRow(li: HTMLLIElement | undefined) {
+    if (!li) return;
+    setTabStop(li);
+    li.focus();
+  }
+
+  // Keep the tab stop on whatever row focus lands on (mouse click, programmatic).
+  listEl.addEventListener("focusin", (e) => {
+    const li = (e.target as HTMLElement).closest<HTMLLIElement>('li[role="treeitem"]');
+    if (li?.dataset.path) setTabStop(li);
+  });
+
+  listEl.addEventListener("keydown", (e) => {
+    if ((e.target as HTMLElement).closest(".rename-input")) return; // typing a new name
+    const li = (e.target as HTMLElement).closest<HTMLLIElement>('li[role="treeitem"]');
+    if (!li) return;
+    const path = li.dataset.path!;
+    const isFolder = li.dataset.folder === "true";
+    const isOpen = li.getAttribute("aria-expanded") === "true";
+    const rows = rowEls();
+    const idx = rows.indexOf(li);
+
+    switch (e.key) {
+      case "ArrowDown": e.preventDefault(); focusRow(rows[idx + 1]); break;
+      case "ArrowUp": e.preventDefault(); focusRow(rows[idx - 1]); break;
+      case "Home": e.preventDefault(); focusRow(rows[0]); break;
+      case "End": e.preventDefault(); focusRow(rows[rows.length - 1]); break;
+      case "ArrowRight":
+        if (isFolder) {
+          e.preventDefault();
+          if (!isOpen) { focusPath = path; toggle(path); } // expand (re-renders, refocuses)
+          else focusRow(rows[idx + 1]);                    // step into first child
+        }
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        if (isFolder && isOpen) { focusPath = path; toggle(path); } // collapse
+        else if (path.includes("/")) {                              // jump to parent
+          focusRow(rows.find((r) => r.dataset.path === path.slice(0, path.lastIndexOf("/"))));
+        }
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        if (isFolder) { focusPath = path; toggle(path); }
+        else onOpen(li.dataset.id!);
+        break;
+      case "F2": e.preventDefault(); startRename(li, path, li.dataset.name ?? ""); break;
+      case "Delete": e.preventDefault(); requestDelete(li); break;
+    }
+  });
 
   // The empty list area is a drop target for moving a row out to the root.
   listEl.ondragover = (e) => { if (e.target === listEl && dragging) e.preventDefault(); };
