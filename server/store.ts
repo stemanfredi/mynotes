@@ -224,8 +224,14 @@ export async function deleteItem(id: string): Promise<boolean> {
   }
   const affected = [...titles.keys()].filter((k) => k.startsWith(id + "/"));
   if (!affected.length) return false;
-  for (const k of affected) deindex(k);
-  await rm(idToPath(id).replace(/\.md$/, ""), { recursive: true, force: true });
+  // Delete files individually, then prune the emptied dirs — NOT rm -r on the
+  // folder: the recursive notes/ watcher holds directory handles, so removing a
+  // watched directory tree in-process fails with EBUSY on Linux.
+  for (const k of affected) {
+    deindex(k);
+    await rm(idToPath(k));
+  }
+  for (const k of affected) await pruneEmptyDirs(dirname(idToPath(k)));
   return true;
 }
 
