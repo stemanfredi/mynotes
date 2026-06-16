@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, deleteItem, backlinks, vaultFile, writeVaultFile, searchContent } from "./store.ts";
 
 const PORT = Number(process.env.PORT ?? 8911);
+// Interface to bind. Unset -> Bun's default 0.0.0.0 (all interfaces). Behind a
+// reverse proxy, set HOST=127.0.0.1 so only the proxy can reach the app.
+const HOST = process.env.HOST;
 // Built client (only present after `bun run build`). In one-process prod, the
 // server serves it so the app + /api share one origin — which the service worker
 // needs. In dev, Vite serves the client and proxies /api here, so this is unused.
@@ -17,6 +20,7 @@ watchNotes((id) => console.log(`mynotes: reindexed ${id} (external change)`));
 
 const server = Bun.serve({
   port: PORT,
+  hostname: HOST, // undefined -> 0.0.0.0; set HOST=127.0.0.1 to bind localhost only
   fetch: (req) =>
     route(req).catch((err) => {
       console.error("mynotes:", err); // malformed input, fs errors, etc. — never crash

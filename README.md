@@ -86,6 +86,7 @@ Environment overrides (all optional):
 
 ```sh
 PORT=9000 bun run dev                      # API port (default 8911)
+HOST=127.0.0.1 bun run serve               # bind one interface (default 0.0.0.0); use localhost behind a proxy
 NOTES_DIR=/path/to/vault bun run dev       # vault location (default ./notes)
 DEV_HOST=notes.example.com bun run dev     # serve dev behind a reverse proxy / tunnel:
                                            # allows that Host header + routes HMR over TLS (:443)
