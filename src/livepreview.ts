@@ -37,6 +37,20 @@ function build(view: EditorView): DecorationSet {
     syntaxTree(state).iterate({
       from, to,
       enter: (node) => {
+        // Fenced code: give the whole block a monospace code-box background. Skip
+        // its children (the ``` are CodeMark nodes too — don't let the inline
+        // marker logic hide them).
+        if (node.name === "FencedCode") {
+          const first = state.doc.lineAt(node.from).number;
+          const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
+          for (let n = first; n <= last; n++) {
+            const line = state.doc.line(n);
+            const edge = n === first ? " cm-pv-cb-open" : n === last ? " cm-pv-cb-close" : "";
+            decos.push(Decoration.line({ class: "cm-pv-codeblock" + edge }).range(line.from));
+          }
+          return false;
+        }
+
         const content = CONTENT[node.name];
         if (content) { decos.push(content.range(node.from, node.to)); return; }
 

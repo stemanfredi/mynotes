@@ -107,3 +107,7 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-pv-h4 { font-size: 1.1em; }
 .cm-pv-h5 { font-size: 1em; }
 .cm-pv-h6 { font-size: .9em; color: var(--muted); }
+.cm-pv-codeblock { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .9em; background: var(--embed); padding: 0 .6em; }
+.cm-pv-cb-open { border-radius: 6px 6px 0 0; padding-top: .3em; }
+.cm-pv-cb-close { border-radius: 0 0 6px 6px; padding-bottom: .3em; }
