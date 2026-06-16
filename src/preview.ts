@@ -1,11 +1,14 @@
 // The editor's live preview, in a single pass. It renders Markdown inline —
 // styling marks and hiding their syntax, rendering code blocks, quotes, links and
 // images — plus the two things that aren't in the Markdown grammar: [[wikilinks]]
-// and bare URLs. Syntax is revealed for editing on whatever line the cursor is on.
-// The document is never mutated; these are view-only decorations.
+// and bare URLs. GFM tables are rendered as block widgets by a companion
+// StateField (`tableField`), since they span multiple lines (which a ViewPlugin's
+// decorations may not). Syntax is revealed for editing on whatever line the cursor
+// is on. The document is never mutated; these are all view-only decorations.
 
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import { StateField } from "@codemirror/state";
 import type { EditorState, Range } from "@codemirror/state";
 import { parseWikiLinks } from "../shared/links.ts";
 import { ImageWidget, isImage } from "./media.ts";
@@ -73,6 +76,11 @@ function build(view: EditorView): DecorationSet {
   const active = activeLines(state);
   const revealed = (pos: number) => active.has(state.doc.lineAt(pos).number);
   const decos: Range<Decoration>[] = [];
+  // Tables are rendered by `tableField` (a StateField — a plugin can't replace
+  // across line breaks). Record their spans so this pass never decorates inside
+  // one, which would overlap the table's block widget.
+  const tableRanges: [number, number][] = [];
+  const inTable = (pos: number) => tableRanges.some(([f, t]) => pos >= f && pos < t);
 
   for (const { from, to } of view.visibleRanges) {
     // 1. Markdown constructs from the syntax tree.
@@ -80,6 +88,10 @@ function build(view: EditorView): DecorationSet {
       from, to,
       enter: (node) => {
         const name = node.name;
+
+        // Tables: owned by tableField. Record the span and don't descend, so no
+        // inline decoration lands inside the block widget's replaced range.
+        if (name === "Table") { tableRanges.push([node.from, node.to]); return false; }
 
         // Fenced code: monospace box on every line. Off the cursor, hide the ```
         // fences (language shown as a corner label); inside, leave them editable.
@@ -166,15 +178,17 @@ function build(view: EditorView): DecorationSet {
     const text = state.doc.sliceString(from, to);
     for (const link of parseWikiLinks(text)) {
       const start = from + link.start;
-      if (revealed(start)) continue;
+      if (revealed(start) || inTable(start)) continue;
       const widget = link.embed && isImage(link.target)
         ? new ImageWidget(link.target, link.label)
         : new WikiLinkWidget(link.target, link.label, link.embed);
       decos.push(Decoration.replace({ widget }).range(start, from + link.end));
     }
     for (const m of text.matchAll(URL_RE)) {
+      const pos = from + m.index;
+      if (inTable(pos)) continue;
       const href = m[0].replace(/[.,;:!?'"]+$/, ""); // drop trailing sentence punctuation
-      if (href) decos.push(urlMark(href).range(from + m.index, from + m.index + href.length));
+      if (href) decos.push(urlMark(href).range(pos, pos + href.length));
     }
   }
 
@@ -204,6 +218,75 @@ export function followLinkAtCursor(view: EditorView): boolean {
   }
   return false;
 }
+
+// ── Tables (GFM) ────────────────────────────────────────────────────────────
+// Rendered as a real HTML grid when the cursor is outside; the raw Markdown
+// returns the moment the cursor enters any of its lines. Because this replaces a
+// multi-line range with one block widget — which a ViewPlugin may not do — it
+// lives in a StateField (see `tableField`).
+
+class TableWidget extends WidgetType {
+  constructor(readonly head: string[], readonly align: string[], readonly rows: string[][]) { super(); }
+  eq(o: TableWidget) { return JSON.stringify(this) === JSON.stringify(o); }
+  toDOM() {
+    const table = document.createElement("table");
+    table.className = "cm-pv-table";
+    const cell = (tag: "th" | "td", text: string, i: number) => {
+      const c = document.createElement(tag);
+      c.textContent = text;
+      if (this.align[i]) c.style.textAlign = this.align[i];
+      return c;
+    };
+    const headRow = table.createTHead().insertRow();
+    this.head.forEach((t, i) => headRow.append(cell("th", t, i)));
+    const body = table.createTBody();
+    for (const row of this.rows) {
+      const tr = body.insertRow();
+      row.forEach((t, i) => tr.append(cell("td", t, i)));
+    }
+    return table;
+  }
+  ignoreEvent() { return false; } // let clicks through so the cursor can land to edit
+}
+
+// Split a `| a | b |` row into trimmed cell strings (tolerating missing edge pipes).
+const tableCells = (line: string) =>
+  line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+
+function buildTables(state: EditorState): DecorationSet {
+  const active = activeLines(state);
+  const decos: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      if (node.name !== "Table") return;
+      const first = state.doc.lineAt(node.from);
+      const last = state.doc.lineAt(Math.max(node.from, node.to - 1));
+      for (let l = first.number; l <= last.number; l++) if (active.has(l)) return false; // editing -> raw
+
+      const lines = state.doc.sliceString(first.from, last.to).split("\n");
+      if (lines.length < 2) return false; // header + delimiter at minimum
+      const align = tableCells(lines[1]).map((c) => {
+        const l = c.startsWith(":"), r = c.endsWith(":");
+        return l && r ? "center" : r ? "right" : l ? "left" : "";
+      });
+      const widget = new TableWidget(tableCells(lines[0]), align, lines.slice(2).filter((l) => l.trim()).map(tableCells));
+      decos.push(Decoration.replace({ widget, block: true }).range(first.from, last.to));
+      return false;
+    },
+  });
+  return Decoration.set(decos, true);
+}
+
+// Block-level table decorations. A StateField (not the ViewPlugin) because it
+// replaces across line breaks; recomputed on edits and when the selection moves
+// (so a table reveals its source as the cursor enters it).
+export const tableField = StateField.define<DecorationSet>({
+  create: buildTables,
+  update(value, tr) {
+    return tr.docChanged || !tr.startState.selection.eq(tr.state.selection) ? buildTables(tr.state) : value;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 export const livePreview = ViewPlugin.fromClass(
   class {

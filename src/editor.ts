@@ -6,9 +6,9 @@ import { EditorView, keymap, drawSelection, highlightActiveLine } from "@codemir
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { Strikethrough } from "@lezer/markdown";
+import { Strikethrough, Table } from "@lezer/markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { livePreview, followLinkAtCursor } from "./preview.ts";
+import { livePreview, tableField, followLinkAtCursor } from "./preview.ts";
 import { codeLanguages } from "./code-languages.ts";
 import { uploadFile } from "./api.ts";
 
@@ -58,9 +58,10 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
         ]),
         drawSelection(),
         highlightActiveLine(),
-        markdown({ codeLanguages, extensions: [Strikethrough] }),
+        markdown({ codeLanguages, extensions: [Strikethrough, Table] }),
         syntaxHighlighting(defaultHighlightStyle),
         livePreview,
+        tableField,
         EditorView.lineWrapping,
         // Paste or drop an image -> store it in the vault, insert ![](path).
         EditorView.domEventHandlers({

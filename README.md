@@ -66,6 +66,30 @@ src/main.ts            app orchestration: state, editor + sidebar wiring, top ba
   and queues edits, replaying them on reconnect — a stale replay parks the same
   conflict copy as any other late write.
 
+## Markdown support
+
+The editor is live-preview: Markdown renders inline as you type, and the raw
+syntax of the line under the cursor stays visible to edit. Files are never
+rewritten — they remain byte-for-byte standard Markdown.
+
+The ordinary syntax just works — headings, **bold**, *italic*, ~~strikethrough~~,
+`inline code`, blockquotes. The parts with behavior specific to this app:
+
+- **Fenced code** is syntax-highlighted, with each language's parser lazy-loaded on
+  first use — JS/TS, Python, JSON, HTML, CSS, SQL, YAML, Rust, Go, Markdown. Off the
+  cursor, the opening fence line collapses to a small language label in the corner.
+- **`[[wikilinks]]`** link between notes — click to open, creating the note if it
+  doesn't exist; `[[note|alias]]` and `[[note#heading]]` are understood, and
+  backlinks are tracked automatically (shown in the right panel).
+- **Links & URLs** — `[text](url)` and bare URLs are styled as links; Cmd/Ctrl-click
+  (or Mod-Enter with the cursor on them) opens them in a new tab.
+- **Tables** (GFM pipe tables) render as a real grid when the cursor is outside, and
+  return to raw Markdown when you click in. Delimiter-row alignment (`:--` `--:`
+  `:-:`) is honored. Cells are plain text — inline Markdown inside a cell isn't formatted.
+- **Images** embed inline — `![alt](path)` and `![[image]]`, served from the vault.
+  Paste or drop an image onto the editor to upload it (saved under `assets/`) and
+  insert the link.
+
 ## Run it
 
 **Requirements:** [Bun](https://bun.com) to run. Full-text content search shells

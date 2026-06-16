@@ -175,6 +175,12 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-img { max-width: 100%; max-height: 420px; border-radius: 6px;
   vertical-align: middle; }
 
+/* rendered GFM tables (raw Markdown returns when the cursor enters them) */
+.cm-pv-table { border-collapse: collapse; margin: .4em 0; font-size: .95em; }
+.cm-pv-table th, .cm-pv-table td { border: 1px solid var(--border);
+  padding: .3em .6em; text-align: left; }
+.cm-pv-table th { background: var(--panel); font-weight: 700; }
+
 /* ─────────────────────────── Responsive ───────────────────────────
    Kept at the end so these overrides win over the base rules above (media
    queries add no specificity). ≤1024 (tablet): backlinks drops out of the right
