@@ -1,15 +1,14 @@
 // Minimal CodeMirror 6 markdown editor: state + view + lang-markdown + history,
-// plus our wiki-link live preview. Deliberately small — no "basic-setup" kitchen
-// sink, just the extensions this app actually needs.
+// plus our live preview. Deliberately small — no "basic-setup" kitchen sink, just
+// the extensions this app actually needs.
 
 import { EditorView, keymap, drawSelection, highlightActiveLine } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { Strikethrough } from "@lezer/markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { wikiLinkLivePreview } from "./wikilink.ts";
-import { markdownLivePreview } from "./livepreview.ts";
-import { autoLink } from "./autolink.ts";
+import { livePreview } from "./preview.ts";
 import { codeLanguages } from "./code-languages.ts";
 
 export interface Editor {
@@ -30,11 +29,9 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         drawSelection(),
         highlightActiveLine(),
-        markdown({ codeLanguages }),
+        markdown({ codeLanguages, extensions: [Strikethrough] }),
         syntaxHighlighting(defaultHighlightStyle),
-        markdownLivePreview,
-        wikiLinkLivePreview,
-        autoLink,
+        livePreview,
         EditorView.lineWrapping,
         EditorView.updateListener.of((u) => { if (u.docChanged && !loading) onChange(u.state.doc.toString()); }),
       ],

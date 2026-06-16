@@ -6,7 +6,7 @@ import "./styles.css";
 import { $, el } from "./dom.ts";
 import { createEditor } from "./editor.ts";
 import { createSidebar } from "./sidebar.ts";
-import { WIKILINK_NAV } from "./wikilink.ts";
+import { WIKILINK_NAV } from "./preview.ts";
 import * as api from "./api.ts";
 
 const backlinksEl = $("#backlinks");
