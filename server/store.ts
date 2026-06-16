@@ -21,10 +21,13 @@ const titles = new Map<string, string>();
 // --- id <-> path mapping --------------------------------------------------
 // id is the path relative to NOTES_DIR without the .md extension, slash-separated.
 
-function idToPath(id: string): string {
-  if (id.includes("..") || id.startsWith("/")) throw new Error("bad id");
-  return join(NOTES_DIR, id + ".md");
+// Resolve a vault-relative path, rejecting traversal outside NOTES_DIR.
+function vaultPath(rel: string): string {
+  if (rel.includes("..") || rel.startsWith("/")) throw new Error("bad path");
+  return join(NOTES_DIR, rel);
 }
+
+const idToPath = (id: string) => vaultPath(id + ".md");
 
 // The title IS the filename (last path segment). The body stays pure content —
 // no reliance on a duplicated `# H1`, which the top bar already shows.
@@ -36,12 +39,12 @@ export function etagOf(content: string): string {
   return '"' + Bun.hash(content).toString(16) + '"';
 }
 
-// A raw vault file (e.g. an embedded image), as a Bun.file for streaming. Guards
-// against path traversal; existence is checked by the caller.
-export function vaultFile(rel: string) {
-  if (rel.includes("..") || rel.startsWith("/")) throw new Error("bad path");
-  return Bun.file(join(NOTES_DIR, rel));
-}
+// A raw vault file (e.g. an embedded image), as a Bun.file for streaming.
+// Existence is checked by the caller.
+export const vaultFile = (rel: string) => Bun.file(vaultPath(rel));
+
+// Note ids directly or transitively under a folder, e.g. "proj" -> ["proj/a", ...].
+const notesUnder = (folder: string) => [...titles.keys()].filter((id) => id.startsWith(folder + "/"));
 
 // --- index ----------------------------------------------------------------
 
@@ -211,8 +214,7 @@ export async function renameNote(from: string, to: string): Promise<RenameResult
 export async function renameFolder(from: string, to: string): Promise<RenameResult> {
   to = to.trim();
   if (!to || from === to) return { ok: false, reason: "same" };
-  const prefix = from + "/";
-  const affected = [...titles.keys()].filter((id) => id.startsWith(prefix));
+  const affected = notesUnder(from);
   if (!affected.length) return { ok: false, reason: "missing" };
   for (const id of affected) {
     if (await readNote(to + id.slice(from.length))) return { ok: false, reason: "exists" };
@@ -231,7 +233,7 @@ export async function deleteItem(id: string): Promise<boolean> {
     await pruneEmptyDirs(dirname(idToPath(id)));
     return true;
   }
-  const affected = [...titles.keys()].filter((k) => k.startsWith(id + "/"));
+  const affected = notesUnder(id);
   if (!affected.length) return false;
   // Delete files individually, then prune the emptied dirs — NOT rm -r on the
   // folder: the recursive notes/ watcher holds directory handles, so removing a

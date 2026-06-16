@@ -110,6 +110,14 @@ describe("delete with the watcher live", () => {
   });
 });
 
+describe("error handling", () => {
+  test("malformed input returns an error response, server keeps serving", async () => {
+    const bad = await fetch(`${base}/api/note/%ZZ`); // invalid percent-encoding
+    expect(bad.status).toBe(500);
+    expect((await fetch(`${base}/api/notes`)).ok).toBe(true); // still alive
+  });
+});
+
 describe("vault file serving", () => {
   test("serves a raw file, 404s missing, 400s traversal", async () => {
     await writeFile(join(NOTES, "pic.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
