@@ -32,13 +32,21 @@ async function refreshList() {
 // --- note session ---------------------------------------------------------
 
 async function openNote(id: string) {
-  let content: string;
-  try { content = await api.getNote(id); }
-  catch { content = ""; await api.saveNote(id, content); } // create-on-open; title lives in the top bar
+  let content: string | null;
+  try {
+    content = await api.getNote(id);
+  } catch {
+    // A real error (network/5xx) — do NOT touch anything. A transient failure
+    // must never blank a note. Leave the current note as-is.
+    setStatus("couldn't open — try again");
+    return;
+  }
   currentId = id;
   titleEl.value = id;
-  editor.setDoc(content);
-  setStatus("saved");
+  // null = note doesn't exist yet: open a blank but DON'T write it. The file is
+  // created lazily on the first edit, so opening a missing/ghost note is safe.
+  editor.setDoc(content ?? "");
+  setStatus(content === null ? "new note" : "saved");
   await refreshList();
   showBacklinks(id);
 }

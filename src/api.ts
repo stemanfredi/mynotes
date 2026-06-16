@@ -9,8 +9,11 @@ export async function listNotes(): Promise<NoteMeta[]> {
   return (await fetch("/api/notes")).json();
 }
 
-export async function getNote(id: string): Promise<string> {
+// Returns the note's content, or null if it doesn't exist (404). Throws only on
+// real errors (5xx, network) so callers never mistake a glitch for "empty".
+export async function getNote(id: string): Promise<string | null> {
   const res = await fetch(`/api/note/${encodeURIComponent(id)}`);
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`getNote ${id}: ${res.status}`);
   const etag = res.headers.get("etag");
   if (etag) etags.set(id, etag);

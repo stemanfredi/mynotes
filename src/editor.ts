@@ -18,6 +18,10 @@ export interface Editor {
 }
 
 export function createEditor(parent: HTMLElement, onChange: (doc: string) => void): Editor {
+  // Suppress onChange while we load a note programmatically, so switching notes
+  // never looks like a user edit (which would auto-save — and could blank a note).
+  let loading = false;
+
   const make = (doc: string) =>
     EditorState.create({
       doc,
@@ -32,7 +36,7 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
         wikiLinkLivePreview,
         autoLink,
         EditorView.lineWrapping,
-        EditorView.updateListener.of((u) => { if (u.docChanged) onChange(u.state.doc.toString()); }),
+        EditorView.updateListener.of((u) => { if (u.docChanged && !loading) onChange(u.state.doc.toString()); }),
       ],
     });
 
@@ -40,6 +44,10 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
 
   return {
     view,
-    setDoc(doc: string) { view.setState(make(doc)); },
+    setDoc(doc: string) {
+      loading = true;
+      view.setState(make(doc));
+      queueMicrotask(() => { loading = false; });
+    },
   };
 }
