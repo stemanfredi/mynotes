@@ -61,7 +61,11 @@ bun run dev          # Bun API (:8911) + Vite client (:5180) together
 
 Then open http://localhost:5180. Edit a note, watch it persist to
 `notes/<id>.md`, and click a `[[wikilink]]` to navigate. Override the API port
-with `PORT=...`.
+with `PORT=...` and the vault location with `NOTES_DIR=...`.
+
+```sh
+bun test             # store + link-parser unit tests (run against a temp vault)
+```
 
 ### Production
 

@@ -7,7 +7,9 @@ import { watch } from "node:fs";
 import { join, dirname } from "node:path";
 import { extractLinkTargets, parseWikiLinks } from "../shared/links.ts";
 
-const NOTES_DIR = join(import.meta.dir, "..", "notes");
+// Vault location: defaults to ./notes, overridable via NOTES_DIR (used by tests
+// and to point the server at a different folder).
+const NOTES_DIR = process.env.NOTES_DIR ?? join(import.meta.dir, "..", "notes");
 
 export interface NoteMeta { id: string; title: string; }
 

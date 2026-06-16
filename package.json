@@ -9,7 +9,8 @@
     "dev:client": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "bun server/index.ts"
+    "serve": "bun server/index.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",
