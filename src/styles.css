@@ -93,3 +93,17 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-wikilink { color: var(--accent); cursor: pointer; border-bottom: 1px solid transparent; }
 .cm-wikilink:hover { border-bottom-color: var(--accent); }
 .cm-wikilink--embed { background: var(--embed); padding: 0 .3em; border-radius: 4px; }
+
+/* live-preview markdown styling */
+.cm-pv-strong { font-weight: 700; }
+.cm-pv-em { font-style: italic; }
+.cm-pv-strike { text-decoration: line-through; color: var(--muted); }
+.cm-pv-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em;
+  background: var(--embed); padding: .05em .35em; border-radius: 4px; }
+.cm-pv-h1, .cm-pv-h2, .cm-pv-h3, .cm-pv-h4, .cm-pv-h5, .cm-pv-h6 { font-weight: 700; line-height: 1.3; }
+.cm-pv-h1 { font-size: 1.7em; }
+.cm-pv-h2 { font-size: 1.45em; }
+.cm-pv-h3 { font-size: 1.25em; }
+.cm-pv-h4 { font-size: 1.1em; }
+.cm-pv-h5 { font-size: 1em; }
+.cm-pv-h6 { font-size: .9em; color: var(--muted); }

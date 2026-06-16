@@ -8,6 +8,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { wikiLinkLivePreview } from "./wikilink.ts";
+import { markdownLivePreview } from "./livepreview.ts";
 
 export interface Editor {
   view: EditorView;
@@ -25,6 +26,7 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
         highlightActiveLine(),
         markdown(),
         syntaxHighlighting(defaultHighlightStyle),
+        markdownLivePreview,
         wikiLinkLivePreview,
         EditorView.lineWrapping,
         EditorView.updateListener.of((u) => { if (u.docChanged) onChange(u.state.doc.toString()); }),
