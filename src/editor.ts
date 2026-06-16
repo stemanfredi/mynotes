@@ -9,6 +9,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { wikiLinkLivePreview } from "./wikilink.ts";
 import { markdownLivePreview } from "./livepreview.ts";
+import { autoLink } from "./autolink.ts";
 import { codeLanguages } from "./code-languages.ts";
 
 export interface Editor {
@@ -29,6 +30,7 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
         syntaxHighlighting(defaultHighlightStyle),
         markdownLivePreview,
         wikiLinkLivePreview,
+        autoLink,
         EditorView.lineWrapping,
         EditorView.updateListener.of((u) => { if (u.docChanged) onChange(u.state.doc.toString()); }),
       ],

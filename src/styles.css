@@ -114,3 +114,8 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-pv-cb-lang { float: right; font-size: .72em; letter-spacing: .04em;
   text-transform: uppercase; color: var(--muted); user-select: none; }
 .cm-pv-quote { border-left: 3px solid var(--border); padding-left: .8em; color: var(--muted); }
+
+/* clickable bare URLs */
+.cm-url { color: var(--accent); cursor: pointer; text-underline-offset: 2px;
+  text-decoration: underline; text-decoration-color: transparent; }
+.cm-url:hover { text-decoration-color: currentColor; }
