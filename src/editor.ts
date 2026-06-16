@@ -4,7 +4,7 @@
 
 import { EditorView, keymap, drawSelection, highlightActiveLine } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { wikiLinkLivePreview } from "./wikilink.ts";
@@ -21,7 +21,7 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
       doc,
       extensions: [
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         drawSelection(),
         highlightActiveLine(),
         markdown(),
