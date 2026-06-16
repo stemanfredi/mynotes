@@ -9,12 +9,13 @@ on the server, a web editor in front of it. No database, no CRDT, no framework.
 Browser (Vite-built vanilla TS app)            Server (Bun, single script)
 ┌──────────────────────────────┐   fetch()    ┌────────────────────────────────┐
 │ CodeMirror 6 editor          │ ───────────> │ GET  /api/notes                │
-│  └ live-preview decorations  │              │ GET  /api/note/:id   (ETag)    │
-│ sidebar folder tree          │              │ PUT  /api/note/:id   (If-Match)│
+│  └ live-preview decorations  │              │ GET  /api/search?q= (full-text)│
+│ sidebar folder tree          │              │ GET  /api/note/:id   (ETag)    │
+│ content search + image paste │              │ PUT  /api/note/:id   (If-Match)│
 │ shared/links.ts ─────────────┼──────┐       │ DELETE /api/note/:id           │
-│ inline images via /api/file  │      │       │ POST /api/rename   {from,to}   │
+│ offline cache + write queue  │      │       │ POST /api/rename   {from,to}   │
 └──────────────────────────────┘      │       │ GET  /api/backlinks/:id        │
-                                      │       │ GET  /api/file/:path  (images) │
+                                      │       │ GET|PUT /api/file/:path        │
                                       │       │                                │
            same parser, both sides ───┘       │ notes/**.md  ← source of truth │
                                               │ in-memory link index (no DB),  │
@@ -36,6 +37,7 @@ src/editor.ts          CodeMirror 6 setup
 src/preview.ts         live preview: Markdown + [[wikilinks]] + URLs, one pass
 src/code-languages.ts  lazy-loaded languages for fenced-code highlighting
 src/media.ts           image embed helpers (isImage, fileSrc, ImageWidget)
+src/idb.ts             IndexedDB cache + offline write queue (notes/meta/pending)
 src/tree.ts            pure: flat note ids -> folder tree
 src/sidebar.ts         the note-tree component (render, expand/collapse, rename, DnD)
 src/dom.ts             $ / el DOM helpers
@@ -55,6 +57,14 @@ src/main.ts            app orchestration: state, editor + sidebar wiring, top ba
 - **Build**: Vite, chosen specifically because Rollup dedupes `@codemirror/state`
   (the no-build esm.sh path can load two copies and break the editor). Vite is a
   bundler, not a framework — the app code is plain vanilla TS.
+- **Search**: ripgrep over the vault on demand — the filesystem is the index, so
+  there's nothing to build or keep in sync (an in-process scan covers hosts
+  without `rg`).
+- **Images**: paste or drop into the editor stores the file under `assets/` and
+  inserts a Markdown link.
+- **Offline**: a service worker caches the app shell; `src/idb.ts` caches notes
+  and queues edits, replaying them on reconnect — a stale replay parks the same
+  conflict copy as any other late write.
 
 ## Run it
 
@@ -85,15 +95,16 @@ CI (`.github/workflows/ci.yml`) runs typecheck + tests + build on every push to
 ### Production
 
 ```sh
-bun run build        # -> dist/ (static client)
-bun run serve        # Bun API; put dist/ behind any static host or the server
+bun run build        # -> dist/ (static client + service worker)
+bun run serve        # one process: Bun serves the API *and* the built client
 ```
+
+Serving the client and the API from one origin is what lets the service worker
+cache the app for offline use — open the served URL, not Vite's dev port.
 
 ## Roadmap
 
 - [ ] Live-refresh an open note when its file changes on disk (SSE/WebSocket)
 - [ ] Read-mode render + `![[transclusion]]` resolution
-- [ ] Offline: service worker + IndexedDB dirty-queue
 - [ ] Graph view over the link index
-- [ ] Full-text (content) search
 

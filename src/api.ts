@@ -1,63 +1,143 @@
-// Thin fetch wrapper over the server's HTTP endpoints. Tracks the per-note ETag
-// so saves can use If-Match for last-write-wins conflict detection.
+// Thin fetch wrapper over the server's HTTP endpoints, made offline-aware: reads
+// fall back to an IndexedDB cache and writes queue for replay when the server is
+// unreachable (see idb.ts). Per-note ETags drive last-write-wins conflict
+// detection — and the SAME ETag rides a queued write on replay, so an offline
+// edit that lost a race still gets parked as a server-side conflict copy.
+
+import * as idb from "./idb.ts";
 
 export interface NoteMeta { id: string; title: string; }
 
 const etags = new Map<string, string>();
 
 export async function listNotes(): Promise<NoteMeta[]> {
-  return (await fetch("/api/notes")).json();
+  try {
+    const list: NoteMeta[] = await (await fetch("/api/notes")).json();
+    idb.put("meta", list, "notes").catch(() => {});
+    return list;
+  } catch {
+    return (await idb.get<NoteMeta[]>("meta", "notes").catch(() => undefined)) ?? [];
+  }
 }
 
-// Returns the note's content, or null if it doesn't exist (404). Throws only on
-// real errors (5xx, network) so callers never mistake a glitch for "empty".
+// Returns the note's content, or null if it doesn't exist (404). Offline: serves
+// the cached body if we have one, else rethrows so the caller shows "couldn't open"
+// (never a misleading blank).
 export async function getNote(id: string): Promise<string | null> {
-  const res = await fetch(`/api/note/${encodeURIComponent(id)}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`getNote ${id}: ${res.status}`);
-  const etag = res.headers.get("etag");
-  if (etag) etags.set(id, etag);
-  return res.text();
+  try {
+    const res = await fetch(`/api/note/${encodeURIComponent(id)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`getNote ${id}: ${res.status}`);
+    const etag = res.headers.get("etag") ?? "";
+    if (etag) etags.set(id, etag);
+    const content = await res.text();
+    idb.put("notes", { content, etag }, id).catch(() => {});
+    return content;
+  } catch (err) {
+    const cached = await idb.get<idb.CachedNote>("notes", id).catch(() => undefined);
+    if (!cached) throw err;
+    if (cached.etag) etags.set(id, cached.etag);
+    return cached.content;
+  }
 }
 
 export type SaveResult =
-  | { ok: true }
+  | { ok: true; queued?: true }
   | { ok: false; conflict: true; conflictId: string };
 
-export async function saveNote(id: string, content: string): Promise<SaveResult> {
+// PUT a note to the server. Throws on network/5xx so saveNote can queue it.
+async function putNote(id: string, content: string, ifMatch?: string): Promise<SaveResult> {
   const headers: Record<string, string> = { "content-type": "text/markdown" };
-  const prev = etags.get(id);
-  if (prev) headers["if-match"] = prev;
+  if (ifMatch) headers["if-match"] = ifMatch;
   const res = await fetch(`/api/note/${encodeURIComponent(id)}`, { method: "PUT", headers, body: content });
   if (res.status === 409) {
     const { etag, conflictId } = await res.json();
     etags.set(id, etag); // adopt server's version so the next save is clean
     return { ok: false, conflict: true, conflictId };
   }
+  if (!res.ok) throw new Error(`saveNote ${id}: ${res.status}`);
   const { etag } = await res.json();
-  if (etag) etags.set(id, etag);
+  if (etag) { etags.set(id, etag); idb.put("notes", { content, etag }, id).catch(() => {}); }
   return { ok: true };
 }
 
+export async function saveNote(id: string, content: string): Promise<SaveResult> {
+  const base = etags.get(id);
+  try {
+    return await putNote(id, content, base);
+  } catch {
+    // Offline: cache the body and queue the write (keyed by id, so it collapses
+    // with any earlier offline save of this note). The base ETag is queued too,
+    // so replay still detects a server-side change.
+    await idb.put("notes", { content, etag: base ?? "" }, id).catch(() => {});
+    await idb.put("pending", { content, etag: base ?? "" }, id).catch(() => {});
+    return { ok: true, queued: true };
+  }
+}
+
+// Replay queued offline writes oldest-first. Each goes out with its stored ETag as
+// If-Match, so a write that raced a server-side change parks a conflict copy — our
+// normal conflict model, reused for free. Stops on the first failure (still offline).
+export async function flushPending(): Promise<void> {
+  const queued = await idb.entries<idb.CachedNote>("pending").catch(() => [] as [IDBValidKey, idb.CachedNote][]);
+  for (const [id, { content, etag }] of queued) {
+    try {
+      await putNote(String(id), content, etag || undefined);
+      await idb.del("pending", id).catch(() => {}); // saved or parked as a conflict — either way, done
+    } catch {
+      break; // still offline
+    }
+  }
+}
+
 export async function getBacklinks(id: string): Promise<NoteMeta[]> {
-  return (await fetch(`/api/backlinks/${encodeURIComponent(id)}`)).json();
+  try { return await (await fetch(`/api/backlinks/${encodeURIComponent(id)}`)).json(); }
+  catch { return []; } // backlinks are server-computed; offline -> none (stale, not wrong)
+}
+
+// Upload a raw file (e.g. a pasted/dropped image) to a vault-relative path.
+// Returns the stored path, ready to drop into a Markdown ![](…) link.
+export async function uploadFile(path: string, body: Blob): Promise<string> {
+  const url = "/api/file/" + path.split("/").map(encodeURIComponent).join("/");
+  const res = await fetch(url, { method: "PUT", body });
+  if (!res.ok) throw new Error(`uploadFile ${path}: ${res.status}`);
+  return (await res.json()).path;
+}
+
+export interface SearchHit { id: string; line: number; text: string; }
+
+// Full-text search of note bodies (server-side, via ripgrep). Empty query / offline -> [].
+export async function searchContent(q: string): Promise<SearchHit[]> {
+  try { return await (await fetch(`/api/search?q=${encodeURIComponent(q)}`)).json(); }
+  catch { return []; }
 }
 
 // Delete a note or a folder (with its contents). Returns whether it existed.
+// Offline: returns false (no delete queue in v1) — the caller reports it.
 export async function deleteItem(id: string): Promise<boolean> {
-  const res = await fetch(`/api/note/${encodeURIComponent(id)}`, { method: "DELETE" });
-  etags.delete(id);
-  return res.ok;
+  try {
+    const res = await fetch(`/api/note/${encodeURIComponent(id)}`, { method: "DELETE" });
+    etags.delete(id);
+    idb.del("notes", id).catch(() => {});
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export type RenameResult = { ok: true } | { ok: false; reason: string };
 
 export async function renameNote(from: string, to: string): Promise<RenameResult> {
-  const res = await fetch("/api/rename", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ from, to }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/rename", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from, to }),
+    });
+  } catch {
+    return { ok: false, reason: "offline" }; // rename rewrites links server-side; not queued in v1
+  }
   if (!res.ok) {
     const { error } = await res.json().catch(() => ({ error: "error" }));
     return { ok: false, reason: error };

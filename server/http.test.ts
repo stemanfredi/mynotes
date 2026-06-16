@@ -118,6 +118,24 @@ describe("error handling", () => {
   });
 });
 
+describe("content search", () => {
+  test("matches note bodies, skips non-matches, empty q -> []", async () => {
+    await put("search/alpha", "the quick brown fox");
+    await put("search/beta", "a lazy sleeping dog");
+    await until(async () => (await notes()).some((n: { id: string }) => n.id === "search/alpha"));
+
+    const search = (q: string) =>
+      fetch(`${base}/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json());
+
+    const hits = await search("quick brown");
+    expect(hits.some((h: { id: string }) => h.id === "search/alpha")).toBe(true);
+    expect(hits.some((h: { id: string }) => h.id === "search/beta")).toBe(false);
+    expect(hits.find((h: { id: string }) => h.id === "search/alpha").text).toContain("quick brown");
+
+    expect(await search("")).toEqual([]);
+  });
+});
+
 describe("vault file serving", () => {
   test("serves a raw file, 404s missing, 400s traversal", async () => {
     await writeFile(join(NOTES, "pic.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
@@ -126,6 +144,22 @@ describe("vault file serving", () => {
     expect(ok.headers.get("content-type")).toContain("svg");
     expect((await fetch(`${base}/api/file/nope.png`)).status).toBe(404);
     expect((await fetch(`${base}/api/file/..%2Fsecret`)).status).toBe(400);
+  });
+});
+
+describe("file upload (PUT /api/file)", () => {
+  test("stores raw bytes, then serves them back; rejects .md", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]); // PNG magic
+    const up = await fetch(`${base}/api/file/assets/pic.png`, { method: "PUT", body: bytes });
+    expect(up.status).toBe(200);
+    expect((await up.json()).path).toBe("assets/pic.png");
+
+    const got = await fetch(`${base}/api/file/assets/pic.png`);
+    expect(got.status).toBe(200);
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(bytes);
+
+    // Notes must go through /api/note (ETag-guarded); /api/file refuses .md.
+    expect((await fetch(`${base}/api/file/sneaky.md`, { method: "PUT", body: "x" })).status).toBe(400);
   });
 });
 

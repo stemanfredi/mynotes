@@ -13,6 +13,7 @@ const backlinksEl = $("#backlinks");
 const titleEl = $<HTMLInputElement>("#note-title");
 const statusEl = $("#status");
 const searchEl = $<HTMLInputElement>("#search");
+const searchResultsEl = $("#search-results");
 const menuToggleEl = $("#menu-toggle");
 const backdropEl = $("#nav-backdrop");
 
@@ -74,7 +75,7 @@ function scheduleSave(doc: string) {
   saveTimer = setTimeout(async () => {
     const res = await api.saveNote(id, doc);
     if (!res.ok) return setStatus(`conflict → saved as “${res.conflictId}”`);
-    setStatus("saved");
+    setStatus(res.queued ? "offline — queued" : "saved");
     await refreshList();
     showBacklinks(id);
   }, 500);
@@ -123,15 +124,34 @@ async function deleteItem(id: string) {
 // [[wikilink]] click -> open the target, creating it if it doesn't exist.
 window.addEventListener(WIKILINK_NAV, (e) => createNote((e as CustomEvent).detail.target));
 
-// Search box doubles as quick-create: filter live; Enter opens an exact match or
-// creates a note named after the typed term.
-searchEl.oninput = syncSidebar;
+// Search box does three things off one field: live-filter the tree by title,
+// full-text search note bodies (results below the tree), and Enter to quick-create.
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+const clearSearchResults = () => { clearTimeout(searchTimer); searchResultsEl.replaceChildren(); };
+
+function scheduleContentSearch() {
+  clearTimeout(searchTimer);
+  const q = searchEl.value.trim();
+  if (!q) return clearSearchResults();
+  searchTimer = setTimeout(async () => {
+    let hits: api.SearchHit[];
+    try { hits = await api.searchContent(q); } catch { return; }
+    if (searchEl.value.trim() !== q) return; // a newer keystroke superseded this one
+    searchResultsEl.replaceChildren(...hits.map((h) =>
+      el("li", { className: "search-hit", onclick: () => openNote(h.id) },
+        el("div", { className: "sr-title", textContent: h.id.split("/").pop() || h.id }),
+        el("div", { className: "sr-snippet", textContent: h.text }))));
+  }, 200);
+}
+
+searchEl.oninput = () => { syncSidebar(); scheduleContentSearch(); };
 searchEl.onkeydown = (e) => {
   if (e.key !== "Enter") return;
   const name = searchEl.value.trim();
   if (!name) return;
   const hit = allNotes.find((n) => n.id.toLowerCase() === name.toLowerCase());
   searchEl.value = "";
+  clearSearchResults();
   hit ? openNote(hit.id) : createNote(name);
 };
 
@@ -162,8 +182,25 @@ titleEl.onblur = () => {
   commitRename(currentId, next);
 };
 
-// Boot: open the first note (or a Welcome stub).
+// Offline ↔ online: when the connection returns, replay queued writes and refresh;
+// when it drops, say so. (Saves made offline are queued by the api layer.)
+window.addEventListener("offline", () => setStatus("offline"));
+window.addEventListener("online", async () => {
+  await api.flushPending();
+  await refreshList();
+  if (currentId) showBacklinks(currentId);
+  setStatus("saved");
+});
+
+// Service worker: prod only (in dev it would fight Vite's HMR). Caches the app
+// shell + assets so a reload boots offline; the api layer handles data offline.
+if (import.meta.env.PROD && "serviceWorker" in navigator)
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+
+// Boot: replay anything queued from a previous offline session, then open the
+// first note (or a Welcome stub).
 (async () => {
+  if (navigator.onLine) api.flushPending().catch(() => {});
   await refreshList();
   await openNote(allNotes[0]?.id ?? "Welcome");
 })();

@@ -4,7 +4,7 @@
 
 import { readdir, readFile, writeFile, mkdir, rename, rmdir, rm, stat } from "node:fs/promises";
 import { watch } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, relative } from "node:path";
 import { extractLinkTargets, parseWikiLinks } from "../shared/links.ts";
 
 // Vault location: defaults to ./notes, overridable via NOTES_DIR (used by tests
@@ -42,6 +42,15 @@ export function etagOf(content: string): string {
 // A raw vault file (e.g. an embedded image), as a Bun.file for streaming.
 // Existence is checked by the caller.
 export const vaultFile = (rel: string) => Bun.file(vaultPath(rel));
+
+// Write a raw (non-note) vault file, e.g. a pasted/dropped image. Creates parent
+// dirs. Path is validated by vaultPath. Notes go through writeNote instead, so
+// they stay ETag-guarded and indexed — callers must reject .md here.
+export async function writeVaultFile(rel: string, bytes: ArrayBuffer): Promise<void> {
+  const path = vaultPath(rel);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, new Uint8Array(bytes));
+}
 
 // Note ids directly or transitively under a folder, e.g. "proj" -> ["proj/a", ...].
 const notesUnder = (folder: string) => [...titles.keys()].filter((id) => id.startsWith(folder + "/"));
@@ -250,4 +259,60 @@ export function backlinks(id: string): NoteMeta[] {
   return [...(back.get(id) ?? [])]
     .map((src) => ({ id: src, title: titles.get(src) ?? src }))
     .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+// --- content search -------------------------------------------------------
+// Full-text search of note BODIES. The filesystem IS the index: ripgrep scans
+// the vault on demand (no index to build or keep in sync). If `rg` isn't on the
+// host we fall back to an in-process scan — same result shape, just slower.
+
+export interface SearchHit { id: string; line: number; text: string; }
+
+const MAX_HITS = 50;
+const snippet = (line: string) => line.trim().slice(0, 200);
+const idOfMdPath = (path: string) => relative(NOTES_DIR, path).replace(/\\/g, "/").replace(/\.md$/, "");
+
+export async function searchContent(q: string): Promise<SearchHit[]> {
+  q = q.trim();
+  if (!q) return [];
+  return (await ripgrep(q)) ?? scan(q); // rg when available, else in-process
+}
+
+// Query is passed as an argv element (after `--`), never through a shell, so it
+// can't be interpreted as a flag or injected. `-F` = literal, `-i` = case-insensitive.
+async function ripgrep(q: string): Promise<SearchHit[] | null> {
+  let proc;
+  try {
+    proc = Bun.spawn(["rg", "--json", "-i", "-F", "--max-count", "5", "--", q, NOTES_DIR], { stderr: "ignore" });
+  } catch {
+    return null; // rg not installed -> caller falls back to scan()
+  }
+  const out = await new Response(proc.stdout).text();
+  if ((await proc.exited) > 1) return null; // 0 = matches, 1 = none, >1 = real error -> fall back
+
+  const hits: SearchHit[] = [];
+  for (const raw of out.split("\n")) {
+    if (!raw || hits.length >= MAX_HITS) break;
+    let ev: any;
+    try { ev = JSON.parse(raw); } catch { continue; }
+    if (ev.type !== "match") continue;
+    const path: string = ev.data?.path?.text ?? "";
+    if (!path.endsWith(".md")) continue; // ignore assets and other non-notes
+    hits.push({ id: idOfMdPath(path), line: ev.data.line_number ?? 0, text: snippet(ev.data.lines?.text ?? "") });
+  }
+  return hits;
+}
+
+async function scan(q: string): Promise<SearchHit[]> {
+  const needle = q.toLowerCase();
+  const hits: SearchHit[] = [];
+  for (const id of [...titles.keys()].sort()) {
+    if (hits.length >= MAX_HITS) break;
+    const note = await readNote(id);
+    if (!note) continue;
+    const lines = note.content.split("\n");
+    const i = lines.findIndex((l) => l.toLowerCase().includes(needle));
+    if (i !== -1) hits.push({ id, line: i + 1, text: snippet(lines[i]) });
+  }
+  return hits;
 }

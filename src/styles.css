@@ -80,6 +80,17 @@ aside li.muted:hover { background: none; }
   color: var(--fg); background: var(--bg); border: 1px solid var(--accent);
   border-radius: 4px; padding: .1rem .3rem; outline: none; }
 
+/* Content-search results: body-text matches, shown under the note tree only
+   while a search is active (collapses to nothing when empty). Each row is a note
+   title over a dimmed snippet; click opens the note. */
+#search-results { flex: 0 1 auto; max-height: 45%; overflow-y: auto;
+  border-top: 1px solid var(--border); }
+#search-results:empty { display: none; }
+#search-results li { line-height: 1.25; }
+#search-results .sr-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#search-results .sr-snippet { color: var(--muted); font-size: .8rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .searchbar { gap: .4rem; }
 #search { flex: 1; min-width: 0; padding: .4rem .55rem; font-size: .85rem;
   background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; }
