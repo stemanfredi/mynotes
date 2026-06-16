@@ -6,6 +6,11 @@ dist/
 .DS_Store
 .nfs*
 
+# secrets — never commit these to a public repo
+.env*
+*.pem
+*.key
+
 # the vault is personal content, not part of the repo. The server creates notes/
 # on boot, so the empty dir doesn't need to be tracked.
 notes/
