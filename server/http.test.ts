@@ -23,7 +23,10 @@ const put = (id: string, body: string, headers: Record<string, string> = {}) =>
     body,
   });
 
-async function until(pred: () => Promise<boolean>, ms = 3000) {
+// Generous by default: the watcher tests wait on fs.watch, whose latency varies a
+// lot on loaded CI runners — a tight budget makes them flaky. A passing condition
+// returns immediately, so the only thing that waits the full time is a real failure.
+async function until(pred: () => Promise<boolean>, ms = 10000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     if (await pred()) return;
