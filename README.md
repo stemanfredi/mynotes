@@ -65,7 +65,9 @@ bun run dev          # Bun API (:8911) + Vite client (:5180) together
 
 Then open http://localhost:5180. Edit a note, watch it persist to
 `notes/<id>.md`, and click a `[[wikilink]]` to navigate. Override the API port
-with `PORT=...` and the vault location with `NOTES_DIR=...`.
+with `PORT=...` and the vault location with `NOTES_DIR=...`. To serve the dev
+server through a reverse proxy / tunnel, set `DEV_HOST=<public hostname>` (allows
+that Host header and routes HMR over its TLS endpoint).
 
 ```sh
 bun test             # unit + HTTP integration tests (run against a temp vault)
