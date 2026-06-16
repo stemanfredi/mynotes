@@ -9,9 +9,8 @@ const json = (data: unknown, init?: ResponseInit) =>
 
 const count = await buildIndex();
 watchNotes((id) => console.log(`mynotes: reindexed ${id} (external change)`));
-console.log(`mynotes: indexed ${count} note(s), listening on http://localhost:${PORT}`);
 
-Bun.serve({
+const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
@@ -59,3 +58,5 @@ Bun.serve({
     return new Response("not found", { status: 404 });
   },
 });
+
+console.log(`mynotes: indexed ${count} note(s), listening on ${server.url}`);
