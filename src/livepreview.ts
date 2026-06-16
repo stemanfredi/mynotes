@@ -93,6 +93,29 @@ function build(view: EditorView): DecorationSet {
           return;
         }
 
+        // Markdown link [text](url): style the text as a clickable link (reusing
+        // the autolink's cm-url class/handler) and hide the [, ](url) machinery
+        // off the cursor line. Children still render so [**bold**](url) works.
+        if (node.name === "Link") {
+          const marks = node.node.getChildren("LinkMark"); // [ ] ( )
+          const url = node.node.getChild("URL");
+          if (marks.length >= 2 && url) {
+            const textFrom = marks[0].to, textTo = marks[1].from;
+            if (textTo > textFrom) {
+              const href = state.doc.sliceString(url.from, url.to);
+              decos.push(Decoration.mark({
+                class: "cm-url",
+                attributes: { "data-url": href, title: "⌘/Ctrl-click to open" },
+              }).range(textFrom, textTo));
+            }
+            if (!active.has(state.doc.lineAt(node.from).number)) {
+              decos.push(HIDE.range(node.from, marks[0].to));   // "["
+              decos.push(HIDE.range(marks[1].from, node.to));   // "](url)"
+            }
+          }
+          return;
+        }
+
         const content = CONTENT[node.name];
         if (content) { decos.push(content.range(node.from, node.to)); return; }
 
