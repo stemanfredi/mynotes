@@ -8,18 +8,18 @@ on the server, a web editor in front of it. No database, no CRDT, no framework.
 ```
 Browser (Vite-built vanilla TS app)            Server (Bun, single script)
 ┌──────────────────────────────┐   fetch()    ┌────────────────────────────────┐
-│ CodeMirror 6 editor          │ ───────────▶ │ GET  /api/notes                │
+│ CodeMirror 6 editor          │ ───────────> │ GET  /api/notes                │
 │  └ live-preview decorations  │              │ GET  /api/note/:id   (ETag)    │
 │ sidebar folder tree          │              │ PUT  /api/note/:id   (If-Match)│
 │ shared/links.ts ─────────────┼──────┐       │ DELETE /api/note/:id           │
 │ inline images via /api/file  │      │       │ POST /api/rename   {from,to}   │
 └──────────────────────────────┘      │       │ GET  /api/backlinks/:id        │
-                                       │       │ GET  /api/file/:path  (images) │
-                                       │       │                                │
-            same parser, both sides ───┘       │ notes/**.md  ← source of truth │
-                                               │ in-memory link index (no DB),  │
-                                               │ kept live by a notes/ watcher  │
-                                               └────────────────────────────────┘
+                                      │       │ GET  /api/file/:path  (images) │
+                                      │       │                                │
+           same parser, both sides ───┘       │ notes/**.md  ← source of truth │
+                                              │ in-memory link index (no DB),  │
+                                              │ kept live by a notes/ watcher  │
+                                              └────────────────────────────────┘
 ```
 
 `shared/links.ts` defines `[[wikilink]]` syntax once and is imported by **both**
@@ -64,10 +64,16 @@ bun run dev          # Bun API (:8911) + Vite client (:5180) together
 ```
 
 Then open http://localhost:5180. Edit a note, watch it persist to
-`notes/<id>.md`, and click a `[[wikilink]]` to navigate. Override the API port
-with `PORT=...` and the vault location with `NOTES_DIR=...`. To serve the dev
-server through a reverse proxy / tunnel, set `DEV_HOST=<public hostname>` (allows
-that Host header and routes HMR over its TLS endpoint).
+`notes/<id>.md`, and click a `[[wikilink]]` to navigate.
+
+Environment overrides (all optional):
+
+```sh
+PORT=9000 bun run dev                      # API port (default 8911)
+NOTES_DIR=/path/to/vault bun run dev       # vault location (default ./notes)
+DEV_HOST=notes.example.com bun run dev     # serve dev behind a reverse proxy / tunnel:
+                                           # allows that Host header + routes HMR over TLS (:443)
+```
 
 ```sh
 bun test             # unit + HTTP integration tests (run against a temp vault)
