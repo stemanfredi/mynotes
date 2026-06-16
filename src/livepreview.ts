@@ -9,6 +9,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import type { Range } from "@codemirror/state";
+import { ImageWidget } from "./media.ts";
 
 const HIDE = Decoration.replace({});
 
@@ -91,6 +92,18 @@ function build(view: EditorView): DecorationSet {
             decos.push(Decoration.line({ class: "cm-pv-quote" }).range(state.doc.line(n).from));
           }
           return;
+        }
+
+        // Markdown image ![alt](url): replace with the rendered image off the
+        // cursor line; reveal the raw source when editing that line.
+        if (node.name === "Image") {
+          const url = node.node.getChild("URL");
+          if (url && !active.has(state.doc.lineAt(node.from).number)) {
+            const marks = node.node.getChildren("LinkMark");
+            const alt = marks.length >= 2 ? state.doc.sliceString(marks[0].to, marks[1].from) : "";
+            decos.push(Decoration.replace({ widget: new ImageWidget(state.doc.sliceString(url.from, url.to), alt) }).range(node.from, node.to));
+          }
+          return false;
         }
 
         // Markdown link [text](url): style the text as a clickable link (reusing

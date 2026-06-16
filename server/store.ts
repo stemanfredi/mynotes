@@ -36,6 +36,13 @@ export function etagOf(content: string): string {
   return '"' + Bun.hash(content).toString(16) + '"';
 }
 
+// A raw vault file (e.g. an embedded image), as a Bun.file for streaming. Guards
+// against path traversal; existence is checked by the caller.
+export function vaultFile(rel: string) {
+  if (rel.includes("..") || rel.startsWith("/")) throw new Error("bad path");
+  return Bun.file(join(NOTES_DIR, rel));
+}
+
 // --- index ----------------------------------------------------------------
 
 // Remove this note's outgoing edges from the backlink map.

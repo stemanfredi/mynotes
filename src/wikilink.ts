@@ -6,6 +6,7 @@
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 import { parseWikiLinks } from "../shared/links.ts";
+import { ImageWidget, isImage } from "./media.ts";
 
 /** Fired when the user clicks a rendered link. main.ts listens and navigates. */
 export const WIKILINK_NAV = "mynotes:wikilink-nav";
@@ -37,9 +38,11 @@ function build(view: EditorView): DecorationSet {
       const end = from + link.end;
       // Reveal the raw [[...]] whenever the selection touches it, so editing works.
       if (sel.from <= end && sel.to >= start) continue;
-      builder.add(start, end, Decoration.replace({
-        widget: new WikiLinkWidget(link.target, link.label, link.embed),
-      }));
+      // ![[image.png]] embeds render as the actual image; everything else a link.
+      const widget = link.embed && isImage(link.target)
+        ? new ImageWidget(link.target, link.label)
+        : new WikiLinkWidget(link.target, link.label, link.embed);
+      builder.add(start, end, Decoration.replace({ widget }));
     }
   }
   return builder.finish();

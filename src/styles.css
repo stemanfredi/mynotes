@@ -119,3 +119,7 @@ main { display: flex; flex-direction: column; min-width: 0; }
 .cm-url { color: var(--accent); cursor: pointer; text-underline-offset: 2px;
   text-decoration: underline; text-decoration-color: transparent; }
 .cm-url:hover { text-decoration-color: currentColor; }
+
+/* embedded images */
+.cm-img { max-width: 100%; max-height: 420px; border-radius: 6px;
+  vertical-align: middle; }

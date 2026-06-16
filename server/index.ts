@@ -1,6 +1,6 @@
 // The entire backend: a folder of .md files + a derived link index, exposed over
 // a handful of HTTP endpoints. No database, no framework. Run: bun server/index.ts
-import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, deleteItem, backlinks } from "./store.ts";
+import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, deleteItem, backlinks, vaultFile } from "./store.ts";
 
 const PORT = Number(process.env.PORT ?? 8911);
 
@@ -32,6 +32,16 @@ const server = Bun.serve({
     // GET /api/backlinks/<id>
     if (pathname.startsWith("/api/backlinks/") && req.method === "GET")
       return json(backlinks(decodeURIComponent(pathname.slice("/api/backlinks/".length))));
+
+    // GET /api/file/<path> -> raw vault file (embedded images, etc.)
+    if (pathname.startsWith("/api/file/") && req.method === "GET") {
+      try {
+        const file = vaultFile(decodeURIComponent(pathname.slice("/api/file/".length)));
+        return (await file.exists()) ? new Response(file) : new Response("not found", { status: 404 });
+      } catch {
+        return new Response("bad path", { status: 400 });
+      }
+    }
 
     // GET|PUT /api/note/<id>
     if (pathname.startsWith("/api/note/")) {

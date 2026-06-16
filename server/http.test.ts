@@ -110,6 +110,17 @@ describe("delete with the watcher live", () => {
   });
 });
 
+describe("vault file serving", () => {
+  test("serves a raw file, 404s missing, 400s traversal", async () => {
+    await writeFile(join(NOTES, "pic.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+    const ok = await fetch(`${base}/api/file/pic.svg`);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-type")).toContain("svg");
+    expect((await fetch(`${base}/api/file/nope.png`)).status).toBe(404);
+    expect((await fetch(`${base}/api/file/..%2Fsecret`)).status).toBe(400);
+  });
+});
+
 describe("the notes/ watcher", () => {
   test("an external file create then delete is reflected in the index", async () => {
     await writeFile(join(NOTES, "external.md"), "# made outside the app");
