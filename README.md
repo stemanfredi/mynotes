@@ -11,8 +11,10 @@ Browser (Vite-built vanilla TS PWA)            Server (Bun, single script)
 │ CodeMirror 6 editor          │ ───────────▶ │ GET  /api/notes                │
 │  └ live-preview decorations  │              │ GET  /api/note/:id   (ETag)    │
 │ sidebar folder tree          │              │ PUT  /api/note/:id   (If-Match)│
-│ shared/links.ts ─────────────┼──────┐       │ POST /api/rename   {from,to}   │
+│ shared/links.ts ─────────────┼──────┐       │ DELETE /api/note/:id           │
+│ inline images via /api/file  │      │       │ POST /api/rename   {from,to}   │
 └──────────────────────────────┘      │       │ GET  /api/backlinks/:id        │
+                                       │       │ GET  /api/file/:path  (images) │
                                        │       │                                │
             same parser, both sides ───┘       │ notes/**.md  ← source of truth │
                                                │ in-memory link index (no DB),  │
