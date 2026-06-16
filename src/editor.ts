@@ -9,6 +9,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { wikiLinkLivePreview } from "./wikilink.ts";
 import { markdownLivePreview } from "./livepreview.ts";
+import { codeLanguages } from "./code-languages.ts";
 
 export interface Editor {
   view: EditorView;
@@ -24,7 +25,7 @@ export function createEditor(parent: HTMLElement, onChange: (doc: string) => voi
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         drawSelection(),
         highlightActiveLine(),
-        markdown(),
+        markdown({ codeLanguages }),
         syntaxHighlighting(defaultHighlightStyle),
         markdownLivePreview,
         wikiLinkLivePreview,
