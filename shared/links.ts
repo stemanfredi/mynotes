@@ -4,9 +4,7 @@
 export interface WikiLink {
   /** Note id the link points at, e.g. "Ideas" or "projects/mynotes" (no #heading, no |alias). */
   target: string;
-  /** Optional heading anchor after `#`. */
-  heading?: string;
-  /** Display text after `|`, falls back to the raw target. */
+  /** Display text after `|`, falls back to the raw target (heading anchor and all). */
   label: string;
   /** `![[...]]` transclusion/embed vs plain `[[...]]` link. */
   embed: boolean;
@@ -27,10 +25,11 @@ export function parseWikiLinks(md: string): WikiLink[] {
     const pipe = inner.indexOf("|");
     const label = pipe === -1 ? inner.trim() : inner.slice(pipe + 1).trim();
     const ref = pipe === -1 ? inner : inner.slice(0, pipe);
+    // A #heading anchor is stripped from the target so the link still resolves to
+    // the note. We don't navigate to headings, so the anchor isn't kept separately.
     const hash = ref.indexOf("#");
     const target = (hash === -1 ? ref : ref.slice(0, hash)).trim();
-    const heading = hash === -1 ? undefined : ref.slice(hash + 1).trim();
-    out.push({ target, heading, label, embed: m[1] === "!", start, end: start + m[0].length });
+    out.push({ target, label, embed: m[1] === "!", start, end: start + m[0].length });
   }
   return out;
 }

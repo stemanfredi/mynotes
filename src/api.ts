@@ -10,6 +10,16 @@ export interface NoteMeta { id: string; title: string; }
 
 const etags = new Map<string, string>();
 
+// Best-effort mirror of a note body into the offline cache — never blocks or throws.
+const cacheNote = (id: string, content: string, etag: string) =>
+  idb.put("notes", { content, etag }, id).catch(() => {});
+
+// GET a JSON array, or [] when the server is unreachable (offline-tolerant read).
+async function fetchList<T>(url: string): Promise<T[]> {
+  try { return await (await fetch(url)).json(); }
+  catch { return []; }
+}
+
 export async function listNotes(): Promise<NoteMeta[]> {
   try {
     const list: NoteMeta[] = await (await fetch("/api/notes")).json();
@@ -31,7 +41,7 @@ export async function getNote(id: string): Promise<string | null> {
     const etag = res.headers.get("etag") ?? "";
     if (etag) etags.set(id, etag);
     const content = await res.text();
-    idb.put("notes", { content, etag }, id).catch(() => {});
+    cacheNote(id, content, etag);
     return content;
   } catch (err) {
     const cached = await idb.get<idb.CachedNote>("notes", id).catch(() => undefined);
@@ -57,7 +67,7 @@ async function putNote(id: string, content: string, ifMatch?: string): Promise<S
   }
   if (!res.ok) throw new Error(`saveNote ${id}: ${res.status}`);
   const { etag } = await res.json();
-  if (etag) { etags.set(id, etag); idb.put("notes", { content, etag }, id).catch(() => {}); }
+  if (etag) { etags.set(id, etag); cacheNote(id, content, etag); }
   return { ok: true };
 }
 
@@ -69,7 +79,7 @@ export async function saveNote(id: string, content: string): Promise<SaveResult>
     // Offline: cache the body and queue the write (keyed by id, so it collapses
     // with any earlier offline save of this note). The base ETag is queued too,
     // so replay still detects a server-side change.
-    await idb.put("notes", { content, etag: base ?? "" }, id).catch(() => {});
+    cacheNote(id, content, base ?? "");
     await idb.put("pending", { content, etag: base ?? "" }, id).catch(() => {});
     return { ok: true, queued: true };
   }
@@ -90,9 +100,9 @@ export async function flushPending(): Promise<void> {
   }
 }
 
-export async function getBacklinks(id: string): Promise<NoteMeta[]> {
-  try { return await (await fetch(`/api/backlinks/${encodeURIComponent(id)}`)).json(); }
-  catch { return []; } // backlinks are server-computed; offline -> none (stale, not wrong)
+// Backlinks are server-computed; offline -> [] (stale, not wrong).
+export function getBacklinks(id: string): Promise<NoteMeta[]> {
+  return fetchList<NoteMeta>(`/api/backlinks/${encodeURIComponent(id)}`);
 }
 
 // Upload a raw file (e.g. a pasted/dropped image) to a vault-relative path.
@@ -107,9 +117,8 @@ export async function uploadFile(path: string, body: Blob): Promise<string> {
 export interface SearchHit { id: string; line: number; text: string; }
 
 // Full-text search of note bodies (server-side, via ripgrep). Empty query / offline -> [].
-export async function searchContent(q: string): Promise<SearchHit[]> {
-  try { return await (await fetch(`/api/search?q=${encodeURIComponent(q)}`)).json(); }
-  catch { return []; }
+export function searchContent(q: string): Promise<SearchHit[]> {
+  return fetchList<SearchHit>(`/api/search?q=${encodeURIComponent(q)}`);
 }
 
 // Delete a note or a folder (with its contents). Returns whether it existed.

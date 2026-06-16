@@ -134,8 +134,7 @@ function scheduleContentSearch() {
   const q = searchEl.value.trim();
   if (!q) return clearSearchResults();
   searchTimer = setTimeout(async () => {
-    let hits: api.SearchHit[];
-    try { hits = await api.searchContent(q); } catch { return; }
+    const hits = await api.searchContent(q); // resolves to [] on error, never throws
     if (searchEl.value.trim() !== q) return; // a newer keystroke superseded this one
     searchResultsEl.replaceChildren(...hits.map((h) =>
       el("li", { className: "search-hit", onclick: () => openNote(h.id) },

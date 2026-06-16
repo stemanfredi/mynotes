@@ -32,11 +32,11 @@ the client (rendering) and the server (indexing), so they can never disagree.
 shared/links.ts        wiki-link parsing — shared by client and server
 server/store.ts        the vault: file ops + derived in-memory link index + watcher
 server/index.ts        HTTP routing over Bun.serve
-src/api.ts             typed fetch wrapper (tracks ETags for conflict detection)
-src/editor.ts          CodeMirror 6 setup
+src/api.ts             typed fetch wrapper: ETag conflict detection + offline cache/queue
+src/editor.ts          CodeMirror 6 setup (+ paste/drop image upload)
 src/preview.ts         live preview: Markdown + [[wikilinks]] + URLs, one pass
 src/code-languages.ts  lazy-loaded languages for fenced-code highlighting
-src/media.ts           image embed helpers (isImage, fileSrc, ImageWidget)
+src/media.ts           image embed helpers (isImage, ImageWidget)
 src/idb.ts             IndexedDB cache + offline write queue (notes/meta/pending)
 src/tree.ts            pure: flat note ids -> folder tree
 src/sidebar.ts         the note-tree component (render, expand/collapse, rename, DnD)

@@ -10,7 +10,7 @@ describe("parseWikiLinks", () => {
 
   test("parses alias, heading, and embed", () => {
     expect(parseWikiLinks("[[A|B]]")[0]).toMatchObject({ target: "A", label: "B" });
-    expect(parseWikiLinks("[[A#H]]")[0]).toMatchObject({ target: "A", heading: "H", label: "A#H" });
+    expect(parseWikiLinks("[[A#H]]")[0]).toMatchObject({ target: "A", label: "A#H" }); // #heading stripped from target
     expect(parseWikiLinks("![[Img]]")[0]).toMatchObject({ target: "Img", embed: true });
   });
 
