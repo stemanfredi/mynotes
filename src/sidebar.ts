@@ -1,12 +1,12 @@
 // The note-tree sidebar: renders notes as a folder tree, owns expand/collapse
-// state, and handles row interactions (click = open/toggle, double-click =
-// rename). It calls back to the app via onOpen / onRename; it does not know about
-// the editor, the server, or app state beyond what update() is given.
+// state, and handles row interactions (click = open/toggle). It calls back to the
+// app via onOpen / onRename; it does not know about the editor, the server, or app
+// state beyond what update() is given.
 //
 // Accessibility: the list is an ARIA `tree` with `treeitem` rows. Exactly one row
 // is in the tab order (roving tabindex); arrows move between rows, Right/Left
 // expand/collapse folders, Enter/Space open or toggle, F2 renames, Delete removes.
-// Mouse behaviour (click, double-click rename, drag-and-drop) is unchanged.
+// Renaming is F2 (keyboard) or the title bar; mouse adds click and drag-and-drop.
 
 import { el } from "./dom.ts";
 import { buildTree, ancestors, type TreeNode } from "./tree.ts";
@@ -18,12 +18,6 @@ export interface SidebarOptions {
   onRename: (from: string, to: string) => void;
   onDelete: (id: string) => void;
 }
-
-// Single-click acts (open/toggle); double-click renames. The native dblclick
-// event is unreliable here because the single-click handler re-renders the list
-// and destroys the row, so we defer the single action and cancel it on a second
-// click within the window.
-const DBLCLICK_MS = 220;
 
 export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOptions) {
   const expanded = new Set<string>(); // folder paths the user has opened
@@ -143,8 +137,7 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
         };
       }
 
-      const single = isFolder ? () => toggle(child.path) : () => onOpen(child.note!.id);
-      wireRow(name, single, () => startRename(li, child.path, child.name));
+      name.onclick = isFolder ? () => toggle(child.path) : () => onOpen(child.note!.id);
       listEl.append(li);
       if (isOpen) renderNodes(child, depth + 1, open);
     }
@@ -290,12 +283,4 @@ export function createSidebar({ listEl, onOpen, onRename, onDelete }: SidebarOpt
   };
 
   return { update };
-}
-
-function wireRow(row: HTMLElement, onSingle: () => void, onDouble: () => void) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  row.onclick = () => {
-    if (timer) { clearTimeout(timer); timer = undefined; onDouble(); return; }
-    timer = setTimeout(() => { timer = undefined; onSingle(); }, DBLCLICK_MS);
-  };
 }
