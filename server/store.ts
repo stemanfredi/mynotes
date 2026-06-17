@@ -110,27 +110,34 @@ export async function buildIndex(): Promise<number> {
 // file sync). Watches notes/ recursively and re-derives the changed file's
 // index entry — adding new notes, dropping deleted ones, recomputing links.
 export function watchNotes(onChange?: (id: string) => void) {
+  // The async handler is wrapped end-to-end: a transient fs race — or a newer
+  // runtime treating an unhandled rejection as fatal — must never take the server
+  // down. A bad watch event is logged; the server keeps serving.
   watch(NOTES_DIR, { recursive: true }, async (_event, filename) => {
-    if (!filename) return;
-    const rel = filename.toString().replace(/\\/g, "/");
+    try {
+      if (!filename) return;
+      const rel = filename.toString().replace(/\\/g, "/");
 
-    if (rel.endsWith(".md")) {
-      const id = rel.replace(/\.md$/, "");
-      try {
-        reindex(id, await readFile(idToPath(id), "utf8")); // created or modified
-      } catch {
-        deindex(id); // deleted or renamed away
+      if (rel.endsWith(".md")) {
+        const id = rel.replace(/\.md$/, "");
+        try {
+          reindex(id, await readFile(idToPath(id), "utf8")); // created or modified
+        } catch {
+          deindex(id); // deleted or renamed away
+        }
+        onChange?.(id);
+        return;
       }
-      onChange?.(id);
-      return;
-    }
 
-    // A directory event. Only act when the path is gone — that means a folder was
-    // removed (e.g. `rm -rf folder/`, which fs.watch reports at the directory
-    // level, not per-file) — and drop every note beneath it.
-    try { await stat(join(NOTES_DIR, rel)); return; } catch { /* gone */ }
-    for (const id of [...titles.keys()]) {
-      if (id === rel || id.startsWith(rel + "/")) { deindex(id); onChange?.(id); }
+      // A directory event. Only act when the path is gone — that means a folder
+      // was removed (e.g. `rm -rf folder/`, which fs.watch reports at the
+      // directory level, not per-file) — and drop every note beneath it.
+      try { await stat(join(NOTES_DIR, rel)); return; } catch { /* gone */ }
+      for (const id of [...titles.keys()]) {
+        if (id === rel || id.startsWith(rel + "/")) { deindex(id); onChange?.(id); }
+      }
+    } catch (err) {
+      console.error("mynotes: watch handler error", err);
     }
   });
 }
