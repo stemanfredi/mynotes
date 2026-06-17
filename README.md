@@ -18,8 +18,8 @@ Browser (Vite-built vanilla TS app)            Server (Bun, single script)
                                       │       │ GET|PUT /api/file/:path        │
                                       │       │                                │
            same parser, both sides ───┘       │ notes/**.md  ← source of truth │
-                                              │ in-memory link index (no DB),  │
-                                              │ kept live by a notes/ watcher  │
+                                              │ cached link index (no DB),     │
+                                              │ mtime-reconciled, no watcher   │
                                               └────────────────────────────────┘
 ```
 
@@ -30,7 +30,7 @@ the client (rendering) and the server (indexing), so they can never disagree.
 
 ```
 shared/links.ts        wiki-link parsing — shared by client and server
-server/store.ts        the vault: file ops + derived in-memory link index + watcher
+server/store.ts        the vault: file ops + cached link index, mtime-reconciled
 server/index.ts        HTTP routing over Bun.serve
 src/api.ts             typed fetch wrapper: ETag conflict detection + offline cache/queue
 src/editor.ts          CodeMirror 6 setup (+ paste/drop image upload)
@@ -47,8 +47,10 @@ src/main.ts            app orchestration: state, editor + sidebar wiring, top ba
 ## Design decisions
 
 - **Storage**: server-side folder of standard `.md` files. The filesystem is the
-  database — a rebuildable in-memory index, no separate store. External edits
-  (SSH, vim, git) are picked up by a recursive `notes/` watcher.
+  database. The backlink index is cached in memory and kept live two ways: in-app
+  writes update the changed entry in place, and a throttled mtime reconcile re-reads
+  only files that changed on disk — so external edits (SSH, vim, git) are picked up
+  within ~1s and backlinks stays cheap at thousands of notes. No watcher.
 - **Sync model**: single user, many devices, no live collaboration. Saves use
   `If-Match`/ETag → last-write-wins; a stale write is parked as a
   `note (conflict YYYY-MM-DD).md` copy instead of being merged.

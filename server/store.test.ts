@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Point the store at a throwaway vault BEFORE importing it (NOTES_DIR is read at
-// module load). The watcher is never started here — we drive the store directly.
+// module load). No server is started here — we drive the store's functions directly.
 const NOTES = await mkdtemp(join(tmpdir(), "mynotes-test-"));
 process.env.NOTES_DIR = NOTES;
 const store = await import("./store.ts");
 
-const ids = () => store.listNotes().map((n) => n.id);
+const ids = async () => (await store.listNotes()).map((n) => n.id);
 const exists = (rel: string) => stat(join(NOTES, rel)).then(() => true, () => false);
 
 beforeEach(async () => {
@@ -42,7 +42,7 @@ describe("listNotes", () => {
     await store.writeNote("Beta", "");
     await store.writeNote("Alpha", "");
     await store.writeNote("nested/Gamma", "");
-    expect(store.listNotes()).toEqual([
+    expect(await store.listNotes()).toEqual([
       { id: "Alpha", title: "Alpha" },
       { id: "Beta", title: "Beta" },
       { id: "nested/Gamma", title: "Gamma" }, // title is the filename, not the path
@@ -54,15 +54,15 @@ describe("backlink index", () => {
   test("indexes [[links]] into backlinks", async () => {
     await store.writeNote("A", "see [[B]]");
     await store.writeNote("B", "i am b");
-    expect(store.backlinks("B").map((n) => n.id)).toEqual(["A"]);
-    expect(store.backlinks("A")).toEqual([]);
+    expect((await store.backlinks("B")).map((n) => n.id)).toEqual(["A"]);
+    expect(await store.backlinks("A")).toEqual([]);
   });
 
   test("recomputes when a note's links change", async () => {
     await store.writeNote("A", "see [[B]]");
-    expect(store.backlinks("B").map((n) => n.id)).toEqual(["A"]);
+    expect((await store.backlinks("B")).map((n) => n.id)).toEqual(["A"]);
     await store.writeNote("A", "no links anymore");
-    expect(store.backlinks("B")).toEqual([]);
+    expect(await store.backlinks("B")).toEqual([]);
   });
 });
 
@@ -75,7 +75,7 @@ describe("renameNote", () => {
     expect(await exists("B.md")).toBe(false);
     expect(await exists("C.md")).toBe(true);
     expect((await store.readNote("A"))?.content).toBe("see [[C]]");
-    expect(store.backlinks("C").map((n) => n.id)).toEqual(["A"]);
+    expect((await store.backlinks("C")).map((n) => n.id)).toEqual(["A"]);
   });
 
   test("preserves alias and heading when rewriting", async () => {
@@ -105,8 +105,8 @@ describe("renameFolder", () => {
 
     const res = await store.renameFolder("proj", "project");
     expect(res.ok).toBe(true);
-    expect(ids()).toContain("project/a");
-    expect(ids()).not.toContain("proj/a");
+    expect(await ids()).toContain("project/a");
+    expect(await ids()).not.toContain("proj/a");
     expect(await exists("proj")).toBe(false); // old dir gone
     expect((await store.readNote("project/a"))?.content).toBe("see [[project/b]]");
     expect((await store.readNote("Out"))?.content).toBe("ref [[project/a]]");
@@ -123,7 +123,7 @@ describe("deleteItem", () => {
     expect(await store.deleteItem("folder/only")).toBe(true);
     expect(await exists("folder/only.md")).toBe(false);
     expect(await exists("folder")).toBe(false);
-    expect(ids()).not.toContain("folder/only");
+    expect(await ids()).not.toContain("folder/only");
   });
 
   test("deletes a folder with nested content", async () => {
@@ -131,7 +131,7 @@ describe("deleteItem", () => {
     await store.writeNote("trash/sub/b", "b");
     expect(await store.deleteItem("trash")).toBe(true);
     expect(await exists("trash")).toBe(false);
-    expect(ids().filter((id) => id.startsWith("trash"))).toEqual([]);
+    expect((await ids()).filter((id) => id.startsWith("trash"))).toEqual([]);
   });
 
   test("returns false for a missing id", async () => {
@@ -164,6 +164,6 @@ describe("buildIndex", () => {
     await store.writeNote("two", "");
     const count = await store.buildIndex(); // rescan from disk
     expect(count).toBe(2);
-    expect(store.backlinks("two").map((n) => n.id)).toEqual(["one"]);
+    expect((await store.backlinks("two")).map((n) => n.id)).toEqual(["one"]);
   });
 });

@@ -1,8 +1,7 @@
 // Integration test: boots the REAL server (index.ts) as a subprocess on a
-// throwaway vault — including the notes/ watcher — and drives it over HTTP. This
-// covers what the unit tests can't: routing, ETag headers, and behaviour that
-// only manifests with the watcher running (external edits; folder delete, which
-// once 500'd with EBUSY).
+// throwaway vault and drives it over HTTP. This covers what the unit tests can't:
+// routing, ETag headers, and end-to-end behaviour like external edits (picked up
+// because every read re-scans the vault) and folder delete.
 
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -23,9 +22,9 @@ const put = (id: string, body: string, headers: Record<string, string> = {}) =>
     body,
   });
 
-// Generous by default: the watcher tests wait on fs.watch, whose latency varies a
-// lot on loaded CI runners — a tight budget makes them flaky. A passing condition
-// returns immediately, so the only thing that waits the full time is a real failure.
+// Generous by default: some checks wait on the subprocess catching up (boot,
+// search). A passing condition returns immediately, so the only thing that waits
+// the full time is a real failure.
 async function until(pred: () => Promise<boolean>, ms = 10000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
@@ -103,8 +102,8 @@ describe("conflict (If-Match)", () => {
   });
 });
 
-describe("delete with the watcher live", () => {
-  test("deleting a folder with nested content returns 200 (not EBUSY 500)", async () => {
+describe("delete a folder", () => {
+  test("deleting a folder with nested content returns 200", async () => {
     await put("del/x", "x");
     await put("del/sub/y", "y");
     const res = await fetch(`${base}/api/note/del`, { method: "DELETE" });
@@ -166,12 +165,24 @@ describe("file upload (PUT /api/file)", () => {
   });
 });
 
-describe("the notes/ watcher", () => {
-  test("an external file create then delete is reflected in the index", async () => {
+describe("external edits", () => {
+  test("a file created then deleted outside the app is reflected", async () => {
+    // No watcher: each /api/notes read re-scans the vault, so a change made
+    // outside the app shows up on the very next request.
     await writeFile(join(NOTES, "external.md"), "# made outside the app");
     await until(async () => (await notes()).some((n: { id: string }) => n.id === "external"));
 
     await rm(join(NOTES, "external.md"));
     await until(async () => !(await notes()).some((n: { id: string }) => n.id === "external"));
-  }, 30000); // raise Bun's 5s per-test cap so the 10s until() budget applies (fs.watch is slow on CI)
+  });
+
+  test("a [[link]] added on disk is reconciled into backlinks", async () => {
+    await put("target", "i am the target");
+    // Write a linking note straight into the vault (no API). The link index is
+    // rebuilt from disk on read, so it's reconciled on a following request.
+    await writeFile(join(NOTES, "outsider.md"), "points to [[target]]");
+    await until(async () =>
+      (await fetch(`${base}/api/backlinks/target`).then((r) => r.json()))
+        .some((n: { id: string }) => n.id === "outsider"));
+  });
 });

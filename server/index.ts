@@ -1,7 +1,7 @@
 // The entire backend: a folder of .md files + a derived link index, exposed over
 // a handful of HTTP endpoints. No database, no framework. Run: bun server/index.ts
 import { join } from "node:path";
-import { buildIndex, watchNotes, listNotes, readNote, writeNote, renameNote, renameFolder, deleteItem, backlinks, vaultFile, writeVaultFile, searchContent } from "./store.ts";
+import { buildIndex, listNotes, readNote, writeNote, renameNote, renameFolder, deleteItem, backlinks, vaultFile, writeVaultFile, searchContent } from "./store.ts";
 
 const PORT = Number(process.env.PORT ?? 8911);
 // Interface to bind. Unset -> Bun's default 0.0.0.0 (all interfaces). Behind a
@@ -16,7 +16,6 @@ const json = (data: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(data), { ...init, headers: { "content-type": "application/json", ...init?.headers } });
 
 const count = await buildIndex();
-watchNotes((id) => console.log(`mynotes: reindexed ${id} (external change)`));
 
 const server = Bun.serve({
   port: PORT,
@@ -37,7 +36,7 @@ async function route(req: Request): Promise<Response> {
   const notFound = () => new Response("not found", { status: 404 });
 
   // GET /api/notes -> [{id,title}]
-  if (pathname === "/api/notes" && req.method === "GET") return json(listNotes());
+  if (pathname === "/api/notes" && req.method === "GET") return json(await listNotes());
 
   // GET /api/search?q= -> [{id,line,text}] full-text body search (empty q -> [])
   if (pathname === "/api/search" && req.method === "GET")
@@ -55,7 +54,7 @@ async function route(req: Request): Promise<Response> {
 
   // GET /api/backlinks/<id> -> [{id,title}]
   if (pathname.startsWith("/api/backlinks/") && req.method === "GET")
-    return json(backlinks(param("/api/backlinks/")));
+    return json(await backlinks(param("/api/backlinks/")));
 
   // GET|PUT /api/file/<path> -> raw vault file (embedded images, etc.). PUT
   // stores an uploaded asset; .md files must use /api/note (ETag-guarded, indexed).

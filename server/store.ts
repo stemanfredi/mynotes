@@ -3,7 +3,6 @@
 // derived, in-memory, throwaway index that can be rebuilt by re-scanning.
 
 import { readdir, readFile, writeFile, mkdir, rename, rmdir, rm, stat } from "node:fs/promises";
-import { watch } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { extractLinkTargets, parseWikiLinks } from "../shared/links.ts";
 
@@ -12,11 +11,6 @@ import { extractLinkTargets, parseWikiLinks } from "../shared/links.ts";
 const NOTES_DIR = process.env.NOTES_DIR ?? join(import.meta.dir, "..", "notes");
 
 export interface NoteMeta { id: string; title: string; }
-
-// Derived index: forward[id] = ids this note links to; back[id] = ids that link here.
-const forward = new Map<string, Set<string>>();
-const back = new Map<string, Set<string>>();
-const titles = new Map<string, string>();
 
 // --- id <-> path mapping --------------------------------------------------
 // id is the path relative to NOTES_DIR without the .md extension, slash-separated.
@@ -53,32 +47,83 @@ export async function writeVaultFile(rel: string, bytes: ArrayBuffer): Promise<v
 }
 
 // Note ids directly or transitively under a folder, e.g. "proj" -> ["proj/a", ...].
-const notesUnder = (folder: string) => [...titles.keys()].filter((id) => id.startsWith(folder + "/"));
+const notesUnder = async (folder: string) => (await listIds()).filter((id) => id.startsWith(folder + "/"));
 
-// --- index ----------------------------------------------------------------
-
-// Remove this note's outgoing edges from the backlink map.
-function clearOutgoing(id: string) {
-  for (const t of forward.get(id) ?? []) back.get(t)?.delete(id);
+// Every note id in the vault (recursive), slash-separated, no .md extension.
+// This is a plain readdir — no bodies read — so listing scales to any vault size
+// and is always current; it underpins listNotes/notesUnder/search.
+async function listIds(): Promise<string[]> {
+  await mkdir(NOTES_DIR, { recursive: true });
+  const entries = await readdir(NOTES_DIR, { recursive: true });
+  return entries.filter((e) => e.endsWith(".md")).map((e) => e.replace(/\\/g, "/").replace(/\.md$/, ""));
 }
 
-function reindex(id: string, content: string) {
-  clearOutgoing(id);
-  const targets = new Set(extractLinkTargets(content));
-  forward.set(id, targets);
-  for (const target of targets) {
-    let sources = back.get(target);
-    if (!sources) back.set(target, sources = new Set());
-    sources.add(id);
+// --- link index: cached, kept live two ways (no watcher) -------------------
+// The .md files are authoritative; the backlink graph is derived and cached, kept
+// current from two directions:
+//   • in-app writes update the one changed entry in place (`record`) — no scan;
+//   • external edits (vim, git, SSH) are caught by `sync`, a throttled reconcile
+//     that re-reads only files whose mtime moved since it last looked.
+// So backlinks stays O(1) on the hot path and the cost of noticing outside changes
+// is ~O(files changed), never O(whole vault) — it scales to thousands of notes.
+
+interface Indexed { mtime: number; targets: Set<string>; } // a note's outgoing links
+const index = new Map<string, Indexed>();      // id -> last-seen mtime + link targets
+let back = new Map<string, Set<string>>();      // id -> ids linking to it (derived)
+
+// In-app writes keep the index live themselves (see `record`), so disk is polled
+// for EXTERNAL edits only this often — bounding the cost of `sync` on busy reads.
+const RECONCILE_MS = 1000;
+let reconciledAt = 0;
+
+// Invert `index` into the backlink map. Pure in-memory; no I/O.
+function rebuildBack() {
+  back = new Map();
+  for (const [id, { targets }] of index) {
+    for (const t of targets) {
+      let sources = back.get(t);
+      if (!sources) back.set(t, sources = new Set());
+      sources.add(id);
+    }
   }
-  titles.set(id, titleOf(id));
 }
 
-function deindex(id: string) {
-  clearOutgoing(id);
-  forward.delete(id);
-  back.delete(id);
-  titles.delete(id);
+// Record a note's current links in the index from content already in hand — the
+// in-app write path, so a save/rename never triggers a vault scan. Caller calls
+// rebuildBack once it's done recording. Stores the real mtime so a later reconcile
+// won't re-read this file needlessly.
+async function record(id: string, content: string) {
+  try { index.set(id, { mtime: (await stat(idToPath(id))).mtimeMs, targets: new Set(extractLinkTargets(content)) }); }
+  catch { index.delete(id); }
+}
+
+// Reconcile the cached index with what's on disk — this is what catches edits
+// made OUTSIDE the app (vim, git, SSH). One readdir + a stat per file finds what
+// changed; bodies are re-read ONLY for new/modified files (usually none), so the
+// steady-state cost is ~O(files changed), not O(vault). Throttled, because in-app
+// writes already keep the index current; `force` skips the throttle for the rare
+// paths that must see disk right now (startup, rename).
+async function sync(force = false): Promise<void> {
+  if (!force && Date.now() - reconciledAt < RECONCILE_MS) return;
+  reconciledAt = Date.now();
+  await mkdir(NOTES_DIR, { recursive: true });
+  const rels = (await readdir(NOTES_DIR, { recursive: true })).filter((e) => e.endsWith(".md"));
+  const seen = new Set<string>();
+  let changed = false;
+  for (const rel of rels) {
+    const id = rel.replace(/\\/g, "/").replace(/\.md$/, "");
+    seen.add(id);
+    let mtime: number;
+    try { mtime = (await stat(join(NOTES_DIR, rel))).mtimeMs; } catch { continue; }
+    if (index.get(id)?.mtime === mtime) continue; // unchanged since last reconcile
+    try {
+      const targets = new Set(extractLinkTargets(await readFile(join(NOTES_DIR, rel), "utf8")));
+      index.set(id, { mtime, targets });
+      changed = true;
+    } catch { /* vanished mid-scan; the prune below or a later reconcile drops it */ }
+  }
+  for (const id of [...index.keys()]) if (!seen.has(id)) { index.delete(id); changed = true; }
+  if (changed) rebuildBack();
 }
 
 // Rewrite every [[from]] / ![[from#h|alias]] in `content` to point at `to`,
@@ -94,59 +139,19 @@ function rewriteLinks(content: string, from: string, to: string): string {
   return out;
 }
 
+// Warm the index from disk and return the note count (for the startup banner).
+// The first sync reads every body once; later syncs re-read only what changed.
 export async function buildIndex(): Promise<number> {
-  forward.clear(); back.clear(); titles.clear();
-  await mkdir(NOTES_DIR, { recursive: true });
-  const entries = await readdir(NOTES_DIR, { recursive: true });
-  const mdFiles = entries.filter((e) => e.endsWith(".md"));
-  for (const rel of mdFiles) {
-    const id = rel.replace(/\\/g, "/").replace(/\.md$/, "");
-    reindex(id, await readFile(join(NOTES_DIR, rel), "utf8"));
-  }
-  return mdFiles.length;
-}
-
-// Keep the index honest when notes change OUTSIDE the app (SSH, vim, git pull,
-// file sync). Watches notes/ recursively and re-derives the changed file's
-// index entry — adding new notes, dropping deleted ones, recomputing links.
-export function watchNotes(onChange?: (id: string) => void) {
-  // The async handler is wrapped end-to-end: a transient fs race — or a newer
-  // runtime treating an unhandled rejection as fatal — must never take the server
-  // down. A bad watch event is logged; the server keeps serving.
-  watch(NOTES_DIR, { recursive: true }, async (_event, filename) => {
-    try {
-      if (!filename) return;
-      const rel = filename.toString().replace(/\\/g, "/");
-
-      if (rel.endsWith(".md")) {
-        const id = rel.replace(/\.md$/, "");
-        try {
-          reindex(id, await readFile(idToPath(id), "utf8")); // created or modified
-        } catch {
-          deindex(id); // deleted or renamed away
-        }
-        onChange?.(id);
-        return;
-      }
-
-      // A directory event. Only act when the path is gone — that means a folder
-      // was removed (e.g. `rm -rf folder/`, which fs.watch reports at the
-      // directory level, not per-file) — and drop every note beneath it.
-      try { await stat(join(NOTES_DIR, rel)); return; } catch { /* gone */ }
-      for (const id of [...titles.keys()]) {
-        if (id === rel || id.startsWith(rel + "/")) { deindex(id); onChange?.(id); }
-      }
-    } catch (err) {
-      console.error("mynotes: watch handler error", err);
-    }
-  });
+  index.clear();
+  await sync(true);
+  return index.size;
 }
 
 // --- public ops -----------------------------------------------------------
 
-export function listNotes(): NoteMeta[] {
-  return [...titles.entries()]
-    .map(([id, title]) => ({ id, title }))
+export async function listNotes(): Promise<NoteMeta[]> {
+  return (await listIds())
+    .map((id) => ({ id, title: titleOf(id) }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -169,13 +174,13 @@ export async function writeNote(id: string, content: string, ifMatch?: string): 
       const stamp = new Date().toISOString().slice(0, 10);
       const conflictId = `${id} (conflict ${stamp})`;
       await writeFile(idToPath(conflictId), content, "utf8");
-      reindex(conflictId, content);
+      await record(conflictId, content); rebuildBack();
       return { ok: false, etag: current.etag, conflictId };
     }
   }
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, "utf8");
-  reindex(id, content);
+  await record(id, content); rebuildBack();
   return { ok: true, etag: etagOf(content) };
 }
 
@@ -195,6 +200,25 @@ async function pruneEmptyDirs(dir: string) {
   }
 }
 
+// Move one note and rewrite [[links]] to it, keeping the index in step without a
+// rescan. Assumes the index is already reconciled (the caller does that once) and
+// the move is valid — so it's safe to call in a tight loop for a folder rename.
+async function moveNote(from: string, to: string, content: string) {
+  const referrers = [...(back.get(from) ?? [])].filter((r) => r !== from);
+  await mkdir(dirname(idToPath(to)), { recursive: true });
+  await rename(idToPath(from), idToPath(to));
+  await pruneEmptyDirs(dirname(idToPath(from)));
+  index.delete(from);
+  await record(to, content);
+  for (const r of referrers) {
+    const note = await readNote(r);
+    if (!note) continue;
+    const updated = rewriteLinks(note.content, from, to);
+    if (updated !== note.content) { await writeFile(idToPath(r), updated, "utf8"); await record(r, updated); }
+  }
+  rebuildBack();
+}
+
 export async function renameNote(from: string, to: string): Promise<RenameResult> {
   to = to.trim();
   if (!to || from === to) return { ok: false, reason: "same" };
@@ -202,40 +226,29 @@ export async function renameNote(from: string, to: string): Promise<RenameResult
   const cur = await readNote(from);
   if (!cur) return { ok: false, reason: "missing" };
 
-  // Capture who links to `from` BEFORE we touch the index.
-  const referrers = [...(back.get(from) ?? [])].filter((r) => r !== from);
-
-  // Move the file, then swap the index entry from -> to.
-  await mkdir(dirname(idToPath(to)), { recursive: true });
-  await rename(idToPath(from), idToPath(to));
-  await pruneEmptyDirs(dirname(idToPath(from)));
-  deindex(from);
-  reindex(to, cur.content);
-
-  // Rewrite [[from]] -> [[to]] in every referrer so links don't break.
-  for (const r of referrers) {
-    const note = await readNote(r);
-    if (!note) continue;
-    const updated = rewriteLinks(note.content, from, to);
-    if (updated !== note.content) {
-      await writeFile(idToPath(r), updated, "utf8");
-      reindex(r, updated);
-    }
-  }
+  // Force a reconcile first so we don't miss a referrer added outside the app
+  // since the last poll (a missed one would leave a broken [[link]]).
+  await sync(true);
+  await moveNote(from, to, cur.content);
   return { ok: true, etag: etagOf(cur.content) };
 }
 
-// Rename a folder = re-prefix every note under it. Each child goes through
-// renameNote, so files move AND [[links]] to them get rewritten.
+// Rename a folder = re-prefix every note under it (files move AND [[links]] to
+// them get rewritten). Reconciles ONCE up front, then moves each child off the
+// warm index — so the cost is independent of vault size, not O(children × vault).
 export async function renameFolder(from: string, to: string): Promise<RenameResult> {
   to = to.trim();
   if (!to || from === to) return { ok: false, reason: "same" };
-  const affected = notesUnder(from);
+  const affected = await notesUnder(from);
   if (!affected.length) return { ok: false, reason: "missing" };
   for (const id of affected) {
     if (await readNote(to + id.slice(from.length))) return { ok: false, reason: "exists" };
   }
-  for (const id of affected) await renameNote(id, to + id.slice(from.length));
+  await sync(true);
+  for (const id of affected) {
+    const cur = await readNote(id);
+    if (cur) await moveNote(id, to + id.slice(from.length), cur.content);
+  }
   return { ok: true, etag: "" };
 }
 
@@ -245,26 +258,25 @@ export async function renameFolder(from: string, to: string): Promise<RenameResu
 export async function deleteItem(id: string): Promise<boolean> {
   if (await readNote(id)) {
     await rm(idToPath(id));
-    deindex(id);
     await pruneEmptyDirs(dirname(idToPath(id)));
+    index.delete(id); rebuildBack();
     return true;
   }
-  const affected = notesUnder(id);
+  const affected = await notesUnder(id);
   if (!affected.length) return false;
-  // Delete files individually, then prune the emptied dirs — NOT rm -r on the
-  // folder: the recursive notes/ watcher holds directory handles, so removing a
-  // watched directory tree in-process fails with EBUSY on Linux.
-  for (const k of affected) {
-    deindex(k);
-    await rm(idToPath(k));
-  }
+  // Delete the notes, then prune the dirs they emptied. Any non-note files (e.g.
+  // assets) under the folder are left in place.
+  for (const k of affected) await rm(idToPath(k));
   for (const k of affected) await pruneEmptyDirs(dirname(idToPath(k)));
+  for (const k of affected) index.delete(k);
+  rebuildBack();
   return true;
 }
 
-export function backlinks(id: string): NoteMeta[] {
+export async function backlinks(id: string): Promise<NoteMeta[]> {
+  await sync();
   return [...(back.get(id) ?? [])]
-    .map((src) => ({ id: src, title: titles.get(src) ?? src }))
+    .map((src) => ({ id: src, title: titleOf(src) }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -313,7 +325,7 @@ async function ripgrep(q: string): Promise<SearchHit[] | null> {
 async function scan(q: string): Promise<SearchHit[]> {
   const needle = q.toLowerCase();
   const hits: SearchHit[] = [];
-  for (const id of [...titles.keys()].sort()) {
+  for (const id of (await listIds()).sort()) {
     if (hits.length >= MAX_HITS) break;
     const note = await readNote(id);
     if (!note) continue;

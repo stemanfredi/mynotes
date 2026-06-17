@@ -15,7 +15,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.13 # pinned: `latest` crashed the server's recursive fs.watch in CI
+          bun-version: latest # was pinned to 1.3.13 for a recursive-fs.watch crash; the watcher is gone, so we track latest
 
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
