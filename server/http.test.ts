@@ -173,5 +173,5 @@ describe("the notes/ watcher", () => {
 
     await rm(join(NOTES, "external.md"));
     await until(async () => !(await notes()).some((n: { id: string }) => n.id === "external"));
-  });
+  }, 30000); // raise Bun's 5s per-test cap so the 10s until() budget applies (fs.watch is slow on CI)
 });
