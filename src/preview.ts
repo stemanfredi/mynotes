@@ -30,6 +30,8 @@ const STYLE: Record<string, Decoration> = {
 const MARKERS = new Set(["EmphasisMark", "CodeMark", "StrikethroughMark", "HeaderMark", "QuoteMark"]);
 
 const URL_RE = /https?:\/\/[^\s<>()[\]]+/g;
+// URL_RE greedily swallows trailing sentence punctuation; drop it before using.
+const trimUrl = (match: string) => match.replace(/[.,;:!?'"]+$/, "");
 const urlMark = (href: string) =>
   Decoration.mark({ class: "cm-url", attributes: { "data-url": href, title: "⌘/Ctrl-click to open" } });
 
@@ -71,6 +73,18 @@ function activeLines(state: EditorState): Set<number> {
   return lines;
 }
 
+/** First and last line NUMBERS a block node spans. node.to is exclusive, so step
+ *  back one (clamped) to land on the node's last line — the one subtle bit, once. */
+function blockLines(state: EditorState, node: { from: number; to: number }): [number, number] {
+  return [state.doc.lineAt(node.from).number, state.doc.lineAt(Math.max(node.from, node.to - 1)).number];
+}
+
+/** Does the selection touch any line in [first, last]? (i.e. reveal the raw source.) */
+function anyActive(active: Set<number>, first: number, last: number): boolean {
+  for (let l = first; l <= last; l++) if (active.has(l)) return true;
+  return false;
+}
+
 function build(view: EditorView): DecorationSet {
   const { state } = view;
   const active = activeLines(state);
@@ -97,10 +111,8 @@ function build(view: EditorView): DecorationSet {
         // fences (language shown as a corner label); inside, leave them editable.
         // Children skipped so the inline-marker logic ignores the ``` (CodeMark).
         if (name === "FencedCode") {
-          const first = state.doc.lineAt(node.from).number;
-          const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
-          let inside = false;
-          for (let l = first; l <= last; l++) if (active.has(l)) { inside = true; break; }
+          const [first, last] = blockLines(state, node);
+          const inside = anyActive(active, first, last);
           for (let n = first; n <= last; n++) {
             const edge = n === first ? " cm-pv-cb-open" : n === last ? " cm-pv-cb-close" : "";
             decos.push(Decoration.line({ class: "cm-pv-codeblock" + edge }).range(state.doc.line(n).from));
@@ -124,8 +136,7 @@ function build(view: EditorView): DecorationSet {
         // Blockquote: a left bar + indent on every line. Children still visited so
         // the `>` markers hide (QuoteMark) and inline marks render.
         if (name === "Blockquote") {
-          const first = state.doc.lineAt(node.from).number;
-          const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
+          const [first, last] = blockLines(state, node);
           for (let n = first; n <= last; n++) {
             decos.push(Decoration.line({ class: "cm-pv-quote" }).range(state.doc.line(n).from));
           }
@@ -187,7 +198,7 @@ function build(view: EditorView): DecorationSet {
     for (const m of text.matchAll(URL_RE)) {
       const pos = from + m.index;
       if (inTable(pos)) continue;
-      const href = m[0].replace(/[.,;:!?'"]+$/, ""); // drop trailing sentence punctuation
+      const href = trimUrl(m[0]);
       if (href) decos.push(urlMark(href).range(pos, pos + href.length));
     }
   }
@@ -212,7 +223,7 @@ export function followLinkAtCursor(view: EditorView): boolean {
   for (const m of line.text.matchAll(URL_RE)) {
     const start = m.index, end = start + m[0].length;
     if (col >= start && col <= end) {
-      const href = m[0].replace(/[.,;:!?'"]+$/, "");
+      const href = trimUrl(m[0]);
       if (href) { window.open(href, "_blank", "noopener,noreferrer"); return true; }
     }
   }
@@ -259,18 +270,18 @@ function buildTables(state: EditorState): DecorationSet {
   syntaxTree(state).iterate({
     enter: (node) => {
       if (node.name !== "Table") return;
-      const first = state.doc.lineAt(node.from);
-      const last = state.doc.lineAt(Math.max(node.from, node.to - 1));
-      for (let l = first.number; l <= last.number; l++) if (active.has(l)) return false; // editing -> raw
+      const [first, last] = blockLines(state, node);
+      if (anyActive(active, first, last)) return false; // editing -> raw
+      const fromPos = state.doc.line(first).from, toPos = state.doc.line(last).to;
 
-      const lines = state.doc.sliceString(first.from, last.to).split("\n");
+      const lines = state.doc.sliceString(fromPos, toPos).split("\n");
       if (lines.length < 2) return false; // header + delimiter at minimum
       const align = tableCells(lines[1]).map((c) => {
         const l = c.startsWith(":"), r = c.endsWith(":");
         return l && r ? "center" : r ? "right" : l ? "left" : "";
       });
       const widget = new TableWidget(tableCells(lines[0]), align, lines.slice(2).filter((l) => l.trim()).map(tableCells));
-      decos.push(Decoration.replace({ widget, block: true }).range(first.from, last.to));
+      decos.push(Decoration.replace({ widget, block: true }).range(fromPos, toPos));
       return false;
     },
   });
